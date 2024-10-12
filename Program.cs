@@ -1,21 +1,17 @@
 ﻿using System.Diagnostics;
-using Microsoft.Build.Construction;
-using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace pswitch;
 
 class Program
 {
-    struct PackageReference
-    {
-        public string Name { get; set; }
-        public string RequestedVersion { get; set; }
-        public string ResolvedVersion { get; set; }
-    }
+    record PackageReference(string Name, string RequestedVersion);
+
+    record ProjectReference(string RelativePath, string AbsolutePath);
 
     static void Main(string[] args)
     {
-        string solutionPath = @"/workspaces/pswitch/pswitch.sln"; // Hardcoded solution path
+        string solutionPath = @"/workspaces/Dependinator/Dependinator.sln"; // Hardcoded solution path
 
         if (!File.Exists(solutionPath))
         {
@@ -25,32 +21,67 @@ class Program
 
         var projects = GetProjectsFromSolution(solutionPath);
 
-        foreach (var projectPath in projects)
+        foreach (var project in projects)
         {
-            Console.WriteLine($"\nProject: {projectPath}");
-            var packageReferences = ListPackageReferences(projectPath);
+            Console.WriteLine($"\nProject: {project.RelativePath} (Absolute: {project.AbsolutePath})");
+            var packageReferences = ListPackageReferences(project.AbsolutePath);
 
             foreach (var package in packageReferences)
             {
-                Console.WriteLine($"Package: {package.Name}, Requested: {package.RequestedVersion}, Resolved: {package.ResolvedVersion}");
+                Console.WriteLine($"Package: {package.Name}, Requested: {package.RequestedVersion}");
             }
         }
     }
 
-    static List<string> GetProjectsFromSolution(string solutionPath)
+    static List<ProjectReference> GetProjectsFromSolution(string solutionPath)
     {
-        var projects = new List<string>();
-        var solution = SolutionFile.Parse(solutionPath);
+        var projects = new List<ProjectReference>();
+        var solutionDirectory = Path.GetDirectoryName(solutionPath);
 
-        foreach (var project in solution.ProjectsInOrder)
+        string result = ExecuteCommand("dotnet", $"sln \"{solutionPath}\" list");
+        var lines = result.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var line in lines)
         {
-            if (project.ProjectType == SolutionProjectType.KnownToBeMSBuildFormat)
+            if (line.EndsWith(".csproj"))
             {
-                projects.Add(project.AbsolutePath);
+                var relativePath = line.Trim();
+                var absolutePath = Path.GetFullPath(relativePath, solutionDirectory);
+                projects.Add(new ProjectReference(relativePath, absolutePath));
             }
         }
 
         return projects;
+    }
+
+    static string ExecuteCommand(string fileName, string arguments)
+    {
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using (var process = Process.Start(processStartInfo))
+        {
+            using (var reader = process.StandardOutput)
+            using (var errorReader = process.StandardError)
+            {
+                string output = reader.ReadToEnd();
+                string errors = errorReader.ReadToEnd();
+
+                if (!string.IsNullOrEmpty(errors))
+                {
+                    Console.WriteLine($"Error executing command: {errors}");
+                }
+
+                return output;
+            }
+        }
     }
 
     static List<PackageReference> ListPackageReferences(string projectPath)
@@ -63,40 +94,25 @@ class Program
             return packageReferences;
         }
 
-        var processStartInfo = new ProcessStartInfo
+        try
         {
-            FileName = "dotnet",
-            Arguments = $"list \"{projectPath}\" package",
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+            var xdoc = XDocument.Load(projectPath);
+            var packageReferenceElements = xdoc.Descendants().Where(e => e.Name.LocalName == "PackageReference");
 
-        using (var process = Process.Start(processStartInfo))
-        {
-            using (var reader = process.StandardOutput)
+            foreach (var element in packageReferenceElements)
             {
-                string result = reader.ReadToEnd();
-                var lines = result.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                var name = element.Attribute("Include")?.Value;
+                var requestedVersion = element.Attribute("Version")?.Value;
 
-                // Regex to match package information lines
-                var regex = new Regex(@">\s+(?<Name>\S+)\s+(?<Requested>\S+)\s+(?<Resolved>\S+)\s*");
-
-                foreach (var line in lines)
+                if (!string.IsNullOrEmpty(name))
                 {
-                    var match = regex.Match(line);
-                    if (match.Success)
-                    {
-                        var packageReference = new PackageReference
-                        {
-                            Name = match.Groups["Name"].Value,
-                            RequestedVersion = match.Groups["Requested"].Value,
-                            ResolvedVersion = match.Groups["Resolved"].Value
-                        };
-                        packageReferences.Add(packageReference);
-                    }
+                    packageReferences.Add(new PackageReference(name, requestedVersion));
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error reading project file: {ex.Message}");
         }
 
         return packageReferences;
