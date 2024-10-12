@@ -6,11 +6,12 @@ namespace pswitch;
 
 class Program
 {
-    static readonly string solutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln"); // Normalized hardcoded solution path
+    static readonly string workSolutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln");
+    static readonly string otherSolutionPath = Path.GetFullPath(@"/workspaces/Scrutor/Scrutor.sln");
 
     record Solution(string AbsolutePath, IReadOnlyList<Project> Projects);
     record Project(
-        string RelativePath,
+        string SpecifiedPath,
         string AbsolutePath,
         IReadOnlyList<ProjectReference> ProjectReferences,
         IReadOnlyList<PackageReference> PackageReferences);
@@ -20,30 +21,44 @@ class Program
 
     static void Main(string[] args)
     {
-        if (!File.Exists(solutionPath))
+        if (!File.Exists(workSolutionPath))
         {
-            Console.WriteLine("Solution file not found.");
+            Console.WriteLine($"Solution file not found '{workSolutionPath}'");
+            return;
+        }
+        if (!File.Exists(otherSolutionPath))
+        {
+            Console.WriteLine($"Solution file not found '{otherSolutionPath}'");
             return;
         }
 
-        var solution = ParseSolution(solutionPath);
+        var workSolution = ParseSolution(workSolutionPath);
+        var packages = workSolution.Projects.SelectMany(p => p.PackageReferences).ToList();
 
-        Console.WriteLine($"\nSolution: {solution.AbsolutePath}");
+        Console.WriteLine($"\nWork Solution: {workSolution.AbsolutePath}");
+        Console.WriteLine($"  Packages to switch:");
 
-        foreach (var project in solution.Projects)
+        foreach (var package in packages.DistinctBy(p => p.Name))
         {
-            Console.WriteLine($"\n  Project: {project.RelativePath} (path: {project.AbsolutePath})");
+            var multipleVersions = packages.Where(p => p.Name == package.Name);
+            var versions = string.Join(". ", multipleVersions.Select(p => p.Version).Distinct());
+            Console.WriteLine($"    Package: {package.Name} ({versions})");
+        }
 
-            Console.WriteLine("     Packages:");
-            foreach (var package in project.PackageReferences)
-            {
-                Console.WriteLine($"       {package.Name} ({package.Version})");
-            }
+        var selectedPage = packages.First(p => p.Name == "Scrutor");
 
-            Console.WriteLine("     Project References:");
-            foreach (var projectRef in project.ProjectReferences)
+        var otherSolution = ParseSolution(otherSolutionPath);
+        Console.WriteLine("\n\n------------------------------------");
+        Console.WriteLine($"Other Solution: {otherSolution.AbsolutePath}");
+        Console.WriteLine($"  Projects to switch to:");
+        foreach (var project in otherSolution.Projects)
+        {
+            Console.WriteLine($"    {project.SpecifiedPath} (path: {project.AbsolutePath})");
+            var projectReferences = project.ProjectReferences;
+            foreach (var projectReference in projectReferences)
             {
-                Console.WriteLine($"       {projectRef.SpecifiedPath}, Path: {projectRef.AbsolutePath}");
+                var path = otherSolution.Projects.FirstOrDefault(p => p.AbsolutePath == projectReference.AbsolutePath)?.SpecifiedPath ?? projectReference.SpecifiedPath;
+                Console.WriteLine($"        ({path})");
             }
         }
     }
@@ -51,7 +66,7 @@ class Program
     static Solution ParseSolution(string solutionPath)
     {
         var absolutePath = Path.GetFullPath(solutionPath);
-        var solutionDirectory = Path.GetFullPath(Path.GetDirectoryName(solutionPath) ?? "");
+        var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? "";
 
         var projectPaths = GetSolutionProjectPaths(absolutePath);
 
@@ -151,6 +166,18 @@ class Program
         }
 
         return projectReferences;
+    }
+}
+
+
+class Utils
+{
+    public static string GetRelativePath(string basePath, string targetPath)
+    {
+        var baseUri = new Uri(basePath);
+        var targetUri = new Uri(targetPath);
+
+        return baseUri.MakeRelativeUri(targetUri).ToString();
     }
 }
 
