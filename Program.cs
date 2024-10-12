@@ -1,15 +1,22 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Xml.Linq;
 
 namespace pswitch;
 
 class Program
 {
-    static readonly string solutionPath = @"/workspaces/Dependinator/Dependinator.sln"; // Hardcoded solution path
+    static readonly string solutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln"); // Normalized hardcoded solution path
 
-    record PackageReference(string Name, string RequestedVersion);
-    record ProjectReference(string RelativePath, string AbsolutePath);
-    record ProjectToProjectReference(string Name, string Path);
+    record Solution(string AbsolutePath, IReadOnlyList<Project> Projects);
+    record Project(
+        string RelativePath,
+        string AbsolutePath,
+        IReadOnlyList<ProjectReference> ProjectReferences,
+        IReadOnlyList<PackageReference> PackageReferences);
+    record PackageReference(string Name, string Version);
+    record ProjectReference(string SpecifiedPath, string AbsolutePath);
+
 
     static void Main(string[] args)
     {
@@ -19,52 +26,58 @@ class Program
             return;
         }
 
-        var projects = GetProjectsFromSolution(solutionPath);
+        var solution = ParseSolution(solutionPath);
 
-        Console.WriteLine($"\nSolution: {solutionPath}");
+        Console.WriteLine($"\nSolution: {solution.AbsolutePath}");
 
-        foreach (var project in projects)
+        foreach (var project in solution.Projects)
         {
-            Console.WriteLine($"\n  Project: {project.RelativePath}");
-            var packageReferences = ListPackageReferences(project.AbsolutePath);
-            var projectReferences = ListProjectReferences(project.AbsolutePath);
+            Console.WriteLine($"\n  Project: {project.RelativePath} (path: {project.AbsolutePath})");
 
-            Console.WriteLine("     Packages References:");
-            foreach (var package in packageReferences)
+            Console.WriteLine("     Packages:");
+            foreach (var package in project.PackageReferences)
             {
-                Console.WriteLine($"       {package.Name}, Version: {package.RequestedVersion}");
+                Console.WriteLine($"       {package.Name} ({package.Version})");
             }
 
             Console.WriteLine("     Project References:");
-            foreach (var projectRef in projectReferences)
+            foreach (var projectRef in project.ProjectReferences)
             {
-                Console.WriteLine($"       {projectRef.Name}, Path: {projectRef.Path}");
+                Console.WriteLine($"       {projectRef.SpecifiedPath}, Path: {projectRef.AbsolutePath}");
             }
         }
     }
 
-    static List<ProjectReference> GetProjectsFromSolution(string solutionPath)
+    static Solution ParseSolution(string solutionPath)
     {
-        var projects = new List<ProjectReference>();
-        var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? "";
+        var absolutePath = Path.GetFullPath(solutionPath);
+        var solutionDirectory = Path.GetFullPath(Path.GetDirectoryName(solutionPath) ?? "");
 
-        string result = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" list");
-        var lines = result.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        var projectPaths = GetSolutionProjectPaths(absolutePath);
 
-        foreach (var line in lines)
+        List<Project> projects = [];
+        foreach (var projectPath in projectPaths)
         {
-            if (line.EndsWith(".csproj"))
-            {
-                var relativePath = line.Trim();
-                var absolutePath = Path.GetFullPath(relativePath, solutionDirectory);
-                projects.Add(new ProjectReference(relativePath, absolutePath));
-            }
+            var absoluteProjectPath = Path.GetFullPath(Path.Combine(solutionDirectory, projectPath));
+            var packageReferences = GetProjectPackageReferences(absoluteProjectPath);
+            var projectReferences = GetProjectProjectReferences(absoluteProjectPath);
+
+            projects.Add(new Project(projectPath, absoluteProjectPath, projectReferences, packageReferences));
         }
 
-        return projects;
+        return new Solution(absolutePath, projects);
     }
 
-    static List<PackageReference> ListPackageReferences(string projectPath)
+    static IReadOnlyList<string> GetSolutionProjectPaths(string solutionPath)
+    {
+        string result = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" list");
+        var lines = result.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
+
+        return lines.Where(line => line.EndsWith(".csproj")).Select(line => line.Trim()).ToList();
+    }
+
+
+    static List<PackageReference> GetProjectPackageReferences(string projectPath)
     {
         var packageReferences = new List<PackageReference>();
 
@@ -98,15 +111,18 @@ class Program
         return packageReferences;
     }
 
-    static List<ProjectToProjectReference> ListProjectReferences(string projectPath)
+    static List<ProjectReference> GetProjectProjectReferences(string projectPath)
     {
-        var projectReferences = new List<ProjectToProjectReference>();
+        var projectReferences = new List<ProjectReference>();
 
         if (!File.Exists(projectPath))
         {
             Console.WriteLine("Project file not found.");
             return projectReferences;
         }
+
+        var projectFolder = Path.GetDirectoryName(projectPath) ?? "";
+
 
         try
         {
@@ -115,13 +131,17 @@ class Program
 
             foreach (var element in projectReferenceElements)
             {
-                var path = element.Attribute("Include")?.Value;
-                var name = Path.GetFileNameWithoutExtension(path) ?? "Unknown";
-
-                if (!string.IsNullOrEmpty(path))
+                var specifiedPath = element.Attribute("Include")?.Value;
+                if (!string.IsNullOrEmpty(specifiedPath))
                 {
-                    var absolutePath = Path.GetFullPath(path, Path.GetDirectoryName(projectPath) ?? "");
-                    projectReferences.Add(new ProjectToProjectReference(name, absolutePath));
+                    var relativePath = specifiedPath.Trim();
+                    if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {   // Convert backslashes to forward slashes for Linux or macOS
+                        relativePath = relativePath.Replace('\\', '/');
+                    }
+
+                    var absolutePath = Path.GetFullPath(Path.Combine(projectFolder, relativePath));
+                    projectReferences.Add(new ProjectReference(specifiedPath, absolutePath));
                 }
             }
         }
