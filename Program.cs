@@ -9,6 +9,7 @@ class Program
 
     record PackageReference(string Name, string RequestedVersion);
     record ProjectReference(string RelativePath, string AbsolutePath);
+    record ProjectToProjectReference(string Name, string Path);
 
     static void Main(string[] args)
     {
@@ -26,11 +27,18 @@ class Program
         {
             Console.WriteLine($"\n  Project: {project.RelativePath}");
             var packageReferences = ListPackageReferences(project.AbsolutePath);
+            var projectReferences = ListProjectReferences(project.AbsolutePath);
 
-            Console.WriteLine($"     Packages:");
+            Console.WriteLine("     Packages References:");
             foreach (var package in packageReferences)
             {
                 Console.WriteLine($"       {package.Name}, Version: {package.RequestedVersion}");
+            }
+
+            Console.WriteLine("     Project References:");
+            foreach (var projectRef in projectReferences)
+            {
+                Console.WriteLine($"       {projectRef.Name}, Path: {projectRef.Path}");
             }
         }
     }
@@ -41,7 +49,7 @@ class Program
         var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? "";
 
         string result = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" list");
-        var lines = result.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
+        var lines = result.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var line in lines)
         {
@@ -55,7 +63,6 @@ class Program
 
         return projects;
     }
-
 
     static List<PackageReference> ListPackageReferences(string projectPath)
     {
@@ -90,9 +97,42 @@ class Program
 
         return packageReferences;
     }
+
+    static List<ProjectToProjectReference> ListProjectReferences(string projectPath)
+    {
+        var projectReferences = new List<ProjectToProjectReference>();
+
+        if (!File.Exists(projectPath))
+        {
+            Console.WriteLine("Project file not found.");
+            return projectReferences;
+        }
+
+        try
+        {
+            var xdoc = XDocument.Load(projectPath);
+            var projectReferenceElements = xdoc.Descendants().Where(e => e.Name.LocalName == "ProjectReference");
+
+            foreach (var element in projectReferenceElements)
+            {
+                var path = element.Attribute("Include")?.Value;
+                var name = Path.GetFileNameWithoutExtension(path) ?? "Unknown";
+
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var absolutePath = Path.GetFullPath(path, Path.GetDirectoryName(projectPath) ?? "");
+                    projectReferences.Add(new ProjectToProjectReference(name, absolutePath));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error reading project file: {ex.Message}");
+        }
+
+        return projectReferences;
+    }
 }
-
-
 
 class Cmd
 {
