@@ -20,7 +20,7 @@ class Program
     record PackageReference(string Name, string Version);
     record ProjectReference(string Name, string SpecifiedPath, string AbsolutePath);
 
-    record Selection<T>(string Text, T Value);
+
 
     static void Main(string[] args)
     {
@@ -44,7 +44,7 @@ class Program
             AnsiConsole.MarkupLine($"\nSolution: [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]");
 
             var packages = workSolution.Projects.SelectMany(p => p.PackageReferences).ToList();
-            var selectedPackage = Prompt("  Select a package to switch:", packages.DistinctBy(p => p.Name),
+            var selectedPackage = Utils.Prompt("  Select a package to switch:", packages.DistinctBy(p => p.Name),
                 p =>
                 {
                     var multipleVersions = packages.Where(pp => pp.Name == p.Name);
@@ -63,7 +63,7 @@ class Program
             var targetSolution = ParseSolution(targetSolutionPath);
             AnsiConsole.MarkupLine($"Target Solution: [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
 
-            var selectedProject = Prompt("  Select a target project:", targetSolution.Projects,
+            var selectedProject = Utils.Prompt("  Select a target project:", targetSolution.Projects,
                 p =>
                 {
                     var references = p.ProjectReferences.Select(r => targetSolution.Projects.FirstOrDefault(p => p.AbsolutePath == p.AbsolutePath)?.Name ?? p.Name).ToList();
@@ -74,17 +74,18 @@ class Program
             AnsiConsole.MarkupLine($"  Selected Project: [blue]{selectedProject.SpecifiedPath}[/]");
 
             AnsiConsole.MarkupLine($"\n\n[grey]--------------------------------------------------------------[/]");
-            AnsiConsole.MarkupLine($"Adding external target projects to solution:");
+            AnsiConsole.MarkupLine("Summary of changes to be performed:\n");
+            AnsiConsole.MarkupLine($"Add external projects to solution:");
             AnsiConsole.MarkupLine($"  {selectedProject.Name} [grey]({selectedProject.AbsolutePath})[/]");
             foreach (var project in selectedProject.ProjectReferences)
             {
-                AnsiConsole.MarkupLine($"  {project.Name} [grey]({project.AbsolutePath})[/]");
+                AnsiConsole.MarkupLine($"  ExternalProjects/{project.Name} [grey]({project.AbsolutePath})[/]");
             }
 
             AnsiConsole.MarkupLine($"\nSwitching package to project reference in projects:");
             foreach (var project in workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name)))
             {
-                AnsiConsole.MarkupLine($"  {project.Name}  ([blue]{selectedPackage.Name}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackage.Name).Version})[/] => [blue]{selectedProject.Name}[/] [grey]({selectedProject.AbsolutePath})[/])");
+                AnsiConsole.MarkupLine($"  {project.Name}: [blue]{selectedPackage.Name}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackage.Name).Version})[/] => [blue]{selectedProject.Name}[/] [grey]({selectedProject.AbsolutePath})[/]");
             }
         }
         catch (TaskCanceledException ex)
@@ -98,28 +99,20 @@ class Program
         }
     }
 
-    static T Prompt<T>(string message, IEnumerable<T> choices, Func<T, string> textSelector, T defaultValue)
+    static void AddProjectsToSolution(string solutionPath, Project project)
     {
-        List<Selection<T>> selections = choices.Select(c => new Selection<T>(textSelector(c), c)).ToList();
-        string selection;
-        try
+        // Add the main project to the solution
+        Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add \"{project.AbsolutePath}\"");
+        AnsiConsole.MarkupLine($"  Added: [blue]{project.Name}[/] [grey]({project.AbsolutePath})[/]");
+
+        // Add project references to the solution
+        foreach (var reference in project.ProjectReferences)
         {
-            selection = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title(message)
-                .PageSize(10)
-                .AddChoices(selections.Select(s => $"{s.Text}")));
+            Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add \"{reference.AbsolutePath}\"");
+            AnsiConsole.MarkupLine($"  Added: [blue]{reference.Name}[/] [grey]({reference.AbsolutePath})[/]");
         }
-        catch (NotSupportedException)
-        {   // Invalid terminal (debugging in Visual Studio Code)
-            return defaultValue!;
-        }
-
-        var selected = selections.FirstOrDefault(s => s.Text == selection);
-        if (selected == null) throw new TaskCanceledException("Selection cancelled.");
-
-        return selected.Value;
     }
+
 
     static Solution ParseSolution(string solutionPath)
     {
@@ -232,12 +225,37 @@ class Program
 
 class Utils
 {
+    record Selection<T>(string Text, T Value);
+
     public static string GetRelativePath(string basePath, string targetPath)
     {
         var baseUri = new Uri(basePath);
         var targetUri = new Uri(targetPath);
 
         return baseUri.MakeRelativeUri(targetUri).ToString();
+    }
+
+    public static T Prompt<T>(string message, IEnumerable<T> choices, Func<T, string> textSelector, T defaultValue)
+    {
+        List<Selection<T>> selections = choices.Select(c => new Selection<T>(textSelector(c), c)).ToList();
+        string selection;
+        try
+        {
+            selection = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title(message)
+                .PageSize(10)
+                .AddChoices(selections.Select(s => $"{s.Text}")));
+        }
+        catch (NotSupportedException)
+        {   // Invalid terminal (debugging in Visual Studio Code)
+            return defaultValue!;
+        }
+
+        var selected = selections.FirstOrDefault(s => s.Text == selection);
+        if (selected == null) throw new TaskCanceledException("Selection cancelled.");
+
+        return selected.Value;
     }
 }
 
