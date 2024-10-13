@@ -6,8 +6,8 @@ namespace pswitch;
 
 class Program
 {
-    static readonly string workSolutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln");
-    static readonly string otherSolutionPath = Path.GetFullPath(@"/workspaces/Scrutor/Scrutor.sln");
+    static readonly string DefaultWorkSolutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln");
+    static readonly string DefaultOtherSolutionPath = Path.GetFullPath(@"/workspaces/Scrutor/Scrutor.sln");
 
     record Solution(string AbsolutePath, IReadOnlyList<Project> Projects);
     record Project(
@@ -21,6 +21,15 @@ class Program
 
     static void Main(string[] args)
     {
+        string workSolutionPath = DefaultWorkSolutionPath;
+        string otherSolutionPath = DefaultOtherSolutionPath;
+
+        if (args.Length >= 2)
+        {
+            workSolutionPath = Path.GetFullPath(args[0]);
+            otherSolutionPath = Path.GetFullPath(args[1]);
+        }
+
         if (!File.Exists(workSolutionPath))
         {
             Console.WriteLine($"Solution file not found '{workSolutionPath}'");
