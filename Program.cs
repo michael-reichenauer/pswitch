@@ -20,12 +20,11 @@ class Program
     record PackageReference(string Name, string Version);
     record ProjectReference(string Name, string SpecifiedPath, string AbsolutePath);
 
-
-
     static void Main(string[] args)
     {
         try
         {
+            string solutionVirtualFolder = "ExternalProjects";
             string workSolutionPath = DefaultWorkSolutionPath;
             string targetSolutionPath = DefaultTargetSolutionPath;
 
@@ -41,10 +40,8 @@ class Program
 
             // Prompt user to select a package from the solution to switch to a target solution project 
             var workSolution = ParseSolution(workSolutionPath);
-            AnsiConsole.MarkupLine($"\nSolution: [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]");
-
             var packages = workSolution.Projects.SelectMany(p => p.PackageReferences).ToList();
-            var selectedPackage = Utils.Prompt("  Select a package to switch:", packages.DistinctBy(p => p.Name),
+            var selectedPackage = Utils.Prompt($"\nSelect a package to switch in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:", packages.DistinctBy(p => p.Name),
                 p =>
                 {
                     var multipleVersions = packages.Where(pp => pp.Name == p.Name);
@@ -55,15 +52,11 @@ class Program
             var multipleVersions = packages.Where(p => p.Name == selectedPackage.Name);
             var selectedVersions = string.Join(". ", multipleVersions.Select(p => p.Version).Distinct());
 
-            AnsiConsole.MarkupLine($"  Selected package: [blue]{selectedPackage.Name}[/] ({selectedVersions})");
-
-            AnsiConsole.MarkupLine($"\n\n[grey]--------------------------------------------------------------[/]");
+            AnsiConsole.MarkupLine($"\nSelected package: [blue]{selectedPackage.Name}[/] [gray]({selectedVersions})[/] in solution [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]");
 
             // Prompt user to select a target project from the target solution to be referenced instead of the selected package
             var targetSolution = ParseSolution(targetSolutionPath);
-            AnsiConsole.MarkupLine($"Target Solution: [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
-
-            var selectedProject = Utils.Prompt("  Select a target project:", targetSolution.Projects,
+            var selectedProject = Utils.Prompt($"\nSelect a target project in [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]:", targetSolution.Projects,
                 p =>
                 {
                     var references = p.ProjectReferences.Select(r => targetSolution.Projects.FirstOrDefault(p => p.AbsolutePath == p.AbsolutePath)?.Name ?? p.Name).ToList();
@@ -71,15 +64,15 @@ class Program
                     return $"{p.Name}{referencesText}";
                 }, targetSolution.Projects.First(p => p.SpecifiedPath == "src/Scrutor/Scrutor.csproj"));
 
-            AnsiConsole.MarkupLine($"  Selected Project: [blue]{selectedProject.SpecifiedPath}[/]");
+            AnsiConsole.MarkupLine($"\nSelected Project: [blue]{selectedProject.SpecifiedPath}[/] in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
 
             AnsiConsole.MarkupLine($"\n\n[grey]--------------------------------------------------------------[/]");
             AnsiConsole.MarkupLine("Summary of changes to be performed:\n");
-            AnsiConsole.MarkupLine($"Add external projects to solution:");
+            AnsiConsole.MarkupLine($"Adding external projects to solution in {solutionVirtualFolder}:");
             AnsiConsole.MarkupLine($"  {selectedProject.Name} [grey]({selectedProject.AbsolutePath})[/]");
             foreach (var project in selectedProject.ProjectReferences)
             {
-                AnsiConsole.MarkupLine($"  ExternalProjects/{project.Name} [grey]({project.AbsolutePath})[/]");
+                AnsiConsole.MarkupLine($"  {project.Name} [grey]({project.AbsolutePath})[/]");
             }
 
             AnsiConsole.MarkupLine($"\nSwitching package to project reference in projects:");
@@ -87,6 +80,19 @@ class Program
             {
                 AnsiConsole.MarkupLine($"  {project.Name}: [blue]{selectedPackage.Name}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackage.Name).Version})[/] => [blue]{selectedProject.Name}[/] [grey]({selectedProject.AbsolutePath})[/]");
             }
+
+
+            AnsiConsole.MarkupLine("");
+            if (!AnsiConsole.Confirm("Do you want to continue?", false))
+            {
+                AnsiConsole.MarkupLine("[red]Cancelled[/]");
+                return;
+            }
+
+            AnsiConsole.MarkupLine("\n[green]Proceeding...[/]");
+
+            // AddProjectsToSolution(workSolutionPath, selectedProject, solutionVirtualFolder);
+
         }
         catch (TaskCanceledException ex)
         {
@@ -99,16 +105,16 @@ class Program
         }
     }
 
-    static void AddProjectsToSolution(string solutionPath, Project project)
+    static void AddProjectsToSolution(string solutionPath, Project project, string solutionFolderName)
     {
         // Add the main project to the solution
-        Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add \"{project.AbsolutePath}\"");
+        Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add --solution-folder \"{solutionFolderName}\" \"{project.AbsolutePath}\" ");
         AnsiConsole.MarkupLine($"  Added: [blue]{project.Name}[/] [grey]({project.AbsolutePath})[/]");
 
         // Add project references to the solution
         foreach (var reference in project.ProjectReferences)
         {
-            Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add \"{reference.AbsolutePath}\"");
+            Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add --solution-folder \"{solutionFolderName}\" \"{reference.AbsolutePath}\" ");
             AnsiConsole.MarkupLine($"  Added: [blue]{reference.Name}[/] [grey]({reference.AbsolutePath})[/]");
         }
     }
@@ -202,13 +208,13 @@ class Program
                 if (!string.IsNullOrEmpty(specifiedPath))
                 {
                     var relativePath = specifiedPath.Trim();
-                    var name = Path.GetFileNameWithoutExtension(relativePath);
                     if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {   // Convert backslashes to forward slashes for Linux or macOS
                         relativePath = relativePath.Replace('\\', '/');
                     }
 
                     var absolutePath = Path.GetFullPath(Path.Combine(projectFolder, relativePath));
+                    var name = Path.GetFileNameWithoutExtension(absolutePath);
                     projectReferences.Add(new ProjectReference(name, specifiedPath, absolutePath));
                 }
             }
@@ -273,21 +279,16 @@ class Cmd
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(processStartInfo);
-        if (process == null)
-        {
-            Console.WriteLine("Error starting process.");
-            return string.Empty;
-        }
+        using var process = Process.Start(processStartInfo) ??
+            throw new Exception($"Error starting process: {fileName} {arguments}");
+
         using var reader = process.StandardOutput;
         using var errorReader = process.StandardError;
         string output = reader.ReadToEnd();
         string errors = errorReader.ReadToEnd();
 
         if (!string.IsNullOrEmpty(errors))
-        {
-            Console.WriteLine($"Error executing command: {errors}");
-        }
+            throw new Exception($"Error executing command: {fileName} {arguments}\nError: {errors}");
 
         return output;
     }
