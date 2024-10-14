@@ -91,7 +91,7 @@ class Program
 
             AnsiConsole.MarkupLine("\n[green]Proceeding...[/]");
 
-            // AddProjectsToSolution(workSolutionPath, selectedProject, solutionVirtualFolder);
+            AddProjectsToSolution(workSolutionPath, selectedProject, solutionVirtualFolder);
 
         }
         catch (TaskCanceledException ex)
@@ -107,15 +107,19 @@ class Program
 
     static void AddProjectsToSolution(string solutionPath, Project project, string solutionFolderName)
     {
+        AnsiConsole.MarkupLine($"Adding project to solution:");
+
         // Add the main project to the solution
-        Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add --solution-folder \"{solutionFolderName}\" \"{project.AbsolutePath}\" ");
-        AnsiConsole.MarkupLine($"  Added: [blue]{project.Name}[/] [grey]({project.AbsolutePath})[/]");
+        var output = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add --solution-folder \"{solutionFolderName}\" \"{project.AbsolutePath}\" ");
+        AnsiConsole.MarkupLine($"   Added: [blue]{project.Name}[/] [grey]({project.AbsolutePath})[/]");
+        AnsiConsole.WriteLine(output);
 
         // Add project references to the solution
         foreach (var reference in project.ProjectReferences)
         {
-            Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add --solution-folder \"{solutionFolderName}\" \"{reference.AbsolutePath}\" ");
+            output = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" add --solution-folder \"{solutionFolderName}\" \"{reference.AbsolutePath}\" ");
             AnsiConsole.MarkupLine($"  Added: [blue]{reference.Name}[/] [grey]({reference.AbsolutePath})[/]");
+            AnsiConsole.WriteLine(output);
         }
     }
 
