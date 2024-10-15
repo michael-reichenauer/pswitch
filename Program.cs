@@ -137,8 +137,15 @@ class Program
         {
             var projectName = Path.GetFileNameWithoutExtension(projectPath);
             var projectAbsolutePath = Path.GetFullPath(Path.Combine(solutionDirectory, projectPath));
+
+            if (!File.Exists(projectAbsolutePath))
+            {
+                AnsiConsole.MarkupLine($"[yellow]Project '{projectName}' not found at '{projectAbsolutePath}'[/]");
+                continue;
+            }
+
             var projectPackageReferences = GetProjectPackageReferences(projectAbsolutePath);
-            var projectProjectReferences = GetProjectProjectReferences(projectAbsolutePath);
+            var projectProjectReferences = GetProjectProjectReferences(projectName, projectAbsolutePath);
 
             solutionProjects.Add(new(projectName, projectPath, projectAbsolutePath, projectProjectReferences, projectPackageReferences));
         }
@@ -158,12 +165,6 @@ class Program
     static List<PackageReference> GetProjectPackageReferences(string projectPath)
     {
         var packageReferences = new List<PackageReference>();
-
-        if (!File.Exists(projectPath))
-        {
-            Console.WriteLine("Project file not found.");
-            return packageReferences;
-        }
 
         try
         {
@@ -189,15 +190,9 @@ class Program
         return packageReferences;
     }
 
-    static List<ProjectReference> GetProjectProjectReferences(string projectPath)
+    static List<ProjectReference> GetProjectProjectReferences(string projectName, string projectPath)
     {
         var projectReferences = new List<ProjectReference>();
-
-        if (!File.Exists(projectPath))
-        {
-            Console.WriteLine("Project file not found.");
-            return projectReferences;
-        }
 
         var projectFolder = Path.GetDirectoryName(projectPath) ?? "";
 
@@ -219,6 +214,11 @@ class Program
 
                     var absolutePath = Path.GetFullPath(Path.Combine(projectFolder, relativePath));
                     var name = Path.GetFileNameWithoutExtension(absolutePath);
+                    if (!File.Exists(absolutePath))
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]Project '{projectName}' reference to '{specifiedPath}' not found at '{absolutePath}'[/]");
+                        continue;
+                    }
                     projectReferences.Add(new ProjectReference(name, specifiedPath, absolutePath));
                 }
             }
@@ -230,6 +230,35 @@ class Program
 
         return projectReferences;
     }
+
+    static void AddProjectReferenceToProject(string projectPath, Project referenceProject)
+    {
+        try
+        {
+            var xdoc = XDocument.Load(projectPath);
+            var projectElement = xdoc.Element("Project");
+            if (projectElement == null)
+            {
+                Console.WriteLine("Invalid project file format.");
+                return;
+            }
+
+            var itemGroupElement = new XElement("ItemGroup");
+            var projectReferenceElement = new XElement("ProjectReference");
+            projectReferenceElement.SetAttributeValue("Include", Utils.GetRelativePath(Path.GetDirectoryName(projectPath) ?? "", referenceProject.AbsolutePath));
+            itemGroupElement.Add(projectReferenceElement);
+
+            projectElement.Add(itemGroupElement);
+            xdoc.Save(projectPath);
+
+            Console.WriteLine($"Added project reference to {referenceProject.Name} in {projectPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating project file: {ex.Message}");
+        }
+    }
+
 }
 
 
