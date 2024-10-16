@@ -81,9 +81,8 @@ class Program
                 AnsiConsole.MarkupLine($"  {project.Name}: [blue]{selectedPackage.Name}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackage.Name).Version})[/] => [blue]{selectedProject.Name}[/] [grey]({selectedProject.AbsolutePath})[/]");
             }
 
-
             AnsiConsole.MarkupLine("");
-            if (!AnsiConsole.Confirm("Do you want to continue?", false))
+            if (!Utils.Confirm("Do you want to continue?", false))
             {
                 AnsiConsole.MarkupLine("[red]Cancelled[/]");
                 return;
@@ -92,6 +91,11 @@ class Program
             AnsiConsole.MarkupLine("\n[green]Proceeding...[/]");
 
             AddProjectsToSolution(workSolutionPath, selectedProject, solutionVirtualFolder);
+
+            foreach (var project in workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name)))
+            {
+                SwitchProjectReferenceToProject(project.AbsolutePath, selectedPackage, selectedProject);
+            }
 
         }
         catch (TaskCanceledException ex)
@@ -104,6 +108,8 @@ class Program
             Console.WriteLine($"{ex}");
         }
     }
+
+
 
     static void AddProjectsToSolution(string solutionPath, Project project, string solutionFolderName)
     {
@@ -231,34 +237,39 @@ class Program
         return projectReferences;
     }
 
-    static void AddProjectReferenceToProject(string projectPath, Project referenceProject)
+    static void SwitchProjectReferenceToProject(string absoluteProjectPath, PackageReference selectedPackage, Project selectedTargetProject)
     {
         try
         {
-            var xdoc = XDocument.Load(projectPath);
-            var projectElement = xdoc.Element("Project");
-            if (projectElement == null)
-            {
-                Console.WriteLine("Invalid project file format.");
-                return;
-            }
+            var xdoc = XDocument.Load(absoluteProjectPath);
 
-            var itemGroupElement = new XElement("ItemGroup");
+            var packageReferenceElement = xdoc.Descendants()
+                .Where(e => e.Name.LocalName == "PackageReference" &&
+                    e.Attribute("Include")?.Value == selectedPackage.Name)
+                .First();
+
+            var projectReferencePath = Utils.GetRelativePath(absoluteProjectPath, selectedTargetProject.AbsolutePath);
+
+            var originalPackageReferenceText = packageReferenceElement.ToString();
+            packageReferenceElement.SetAttributeValue("Condition", $"'$(PSWITCH)' == '{projectReferencePath}'");
+            var disabledPackageReferenceText = packageReferenceElement.ToString();
+
             var projectReferenceElement = new XElement("ProjectReference");
-            projectReferenceElement.SetAttributeValue("Include", Utils.GetRelativePath(Path.GetDirectoryName(projectPath) ?? "", referenceProject.AbsolutePath));
-            itemGroupElement.Add(projectReferenceElement);
+            projectReferenceElement.SetAttributeValue("Include", projectReferencePath);
+            projectReferenceElement.SetAttributeValue("Condition", $"'$(PSWITCH)' != '{selectedPackage.Name}'");
+            var targetProjectReferenceText = projectReferenceElement.ToString();
 
-            projectElement.Add(itemGroupElement);
-            xdoc.Save(projectPath);
+            var originalFileText = File.ReadAllText(absoluteProjectPath);
+            var updatedFileText = originalFileText.Replace(originalPackageReferenceText, disabledPackageReferenceText + targetProjectReferenceText);
+            File.WriteAllText(absoluteProjectPath, updatedFileText);
 
-            Console.WriteLine($"Added project reference to {referenceProject.Name} in {projectPath}");
+            Console.WriteLine($"Added project reference to {selectedTargetProject.Name} in {absoluteProjectPath}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error updating project file: {ex.Message}");
         }
     }
-
 }
 
 
@@ -295,6 +306,18 @@ class Utils
         if (selected == null) throw new TaskCanceledException("Selection cancelled.");
 
         return selected.Value;
+    }
+
+    public static bool Confirm(string prompt, bool defaultValue = true)
+    {
+        try
+        {
+            return AnsiConsole.Confirm(prompt, defaultValue);
+        }
+        catch (InvalidOperationException)
+        {   // Invalid terminal (debugging in Visual Studio Code)
+            return !defaultValue;
+        }
     }
 }
 
