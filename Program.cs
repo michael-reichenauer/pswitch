@@ -5,20 +5,14 @@ using Spectre.Console;
 
 namespace pswitch;
 
+
+
 class Program
 {
     static readonly string DefaultWorkSolutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln");
     static readonly string DefaultTargetSolutionPath = Path.GetFullPath(@"/workspaces/Scrutor/Scrutor.sln");
 
-    record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Projects);
-    record Project(
-        string Name,
-        string SpecifiedPath,
-        string AbsolutePath,
-        IReadOnlyList<ProjectReference> ProjectReferences,
-        IReadOnlyList<PackageReference> PackageReferences);
-    record PackageReference(string Name, string Version);
-    record ProjectReference(string Name, string SpecifiedPath, string AbsolutePath);
+
 
     static void Main(string[] args)
     {
@@ -37,9 +31,11 @@ class Program
             if (!File.Exists(workSolutionPath)) throw new FileNotFoundException($"Solution file not found '{workSolutionPath}'");
             if (!File.Exists(targetSolutionPath)) throw new FileNotFoundException($"Solution file not found '{targetSolutionPath}'");
 
+            workSolutionPath = Path.GetFullPath(workSolutionPath);
+            targetSolutionPath = Path.GetFullPath(targetSolutionPath);
 
             // Prompt user to select a package from the solution to switch to a target solution project 
-            var workSolution = ParseSolution(workSolutionPath);
+            var workSolution = Solution.Parse(workSolutionPath);
             var packages = workSolution.Projects.SelectMany(p => p.PackageReferences).ToList();
             var selectedPackage = Utils.Prompt($"\nSelect a package to switch in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:", packages.DistinctBy(p => p.Name),
                 p =>
@@ -55,8 +51,8 @@ class Program
             AnsiConsole.MarkupLine($"\nSelected package: [blue]{selectedPackage.Name}[/] [gray]({selectedVersions})[/] in solution [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]");
 
             // Prompt user to select a target project from the target solution to be referenced instead of the selected package
-            var targetSolution = ParseSolution(targetSolutionPath);
-            var selectedProject = Utils.Prompt($"\nSelect a target project in [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]:", targetSolution.Projects,
+            var targetSolution = Solution.Parse(targetSolutionPath);
+            var selectedTargetProject = Utils.Prompt($"\nSelect a target project in [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]:", targetSolution.Projects,
                 p =>
                 {
                     var references = p.ProjectReferences.Select(r => targetSolution.Projects.FirstOrDefault(p => p.AbsolutePath == p.AbsolutePath)?.Name ?? p.Name).ToList();
@@ -64,13 +60,13 @@ class Program
                     return $"{p.Name}{referencesText}";
                 }, targetSolution.Projects.First(p => p.SpecifiedPath == "src/Scrutor/Scrutor.csproj"));
 
-            AnsiConsole.MarkupLine($"\nSelected Project: [blue]{selectedProject.SpecifiedPath}[/] in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
+            AnsiConsole.MarkupLine($"\nSelected Project: [blue]{selectedTargetProject.SpecifiedPath}[/] in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
 
             AnsiConsole.MarkupLine($"\n\n[grey]--------------------------------------------------------------[/]");
             AnsiConsole.MarkupLine("Summary of changes to be performed:\n");
             AnsiConsole.MarkupLine($"Adding external projects to solution in {solutionVirtualFolder}:");
-            AnsiConsole.MarkupLine($"  {selectedProject.Name} [grey]({selectedProject.AbsolutePath})[/]");
-            foreach (var project in selectedProject.ProjectReferences)
+            AnsiConsole.MarkupLine($"  {selectedTargetProject.Name} [grey]({selectedTargetProject.AbsolutePath})[/]");
+            foreach (var project in selectedTargetProject.ProjectReferences)
             {
                 AnsiConsole.MarkupLine($"  {project.Name} [grey]({project.AbsolutePath})[/]");
             }
@@ -78,7 +74,7 @@ class Program
             AnsiConsole.MarkupLine($"\nSwitching package to project reference in projects:");
             foreach (var project in workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name)))
             {
-                AnsiConsole.MarkupLine($"  {project.Name}: [blue]{selectedPackage.Name}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackage.Name).Version})[/] => [blue]{selectedProject.Name}[/] [grey]({selectedProject.AbsolutePath})[/]");
+                AnsiConsole.MarkupLine($"  {project.Name}: [blue]{selectedPackage.Name}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackage.Name).Version})[/] => [blue]{selectedTargetProject.Name}[/] [grey]({selectedTargetProject.AbsolutePath})[/]");
             }
 
             AnsiConsole.MarkupLine("");
@@ -90,11 +86,11 @@ class Program
 
             AnsiConsole.MarkupLine("\n[green]Proceeding...[/]");
 
-            AddProjectsToSolution(workSolutionPath, selectedProject, solutionVirtualFolder);
+            AddProjectsToSolution(workSolutionPath, selectedTargetProject, solutionVirtualFolder);
 
             foreach (var project in workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name)))
             {
-                SwitchProjectReferenceToProject(project.AbsolutePath, selectedPackage, selectedProject);
+                SwitchProjectReferenceToProject(project, selectedPackage, selectedTargetProject);
             }
 
         }
@@ -130,135 +126,34 @@ class Program
     }
 
 
-    static Solution ParseSolution(string solutionPath)
-    {
-        var solutionName = Path.GetFileNameWithoutExtension(solutionPath);
-        var solutionAbsolutePath = Path.GetFullPath(solutionPath);
-        var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? "";
 
-        var solutionProjectPaths = GetSolutionProjectPaths(solutionAbsolutePath);
-
-        List<Project> solutionProjects = [];
-        foreach (var projectPath in solutionProjectPaths)
-        {
-            var projectName = Path.GetFileNameWithoutExtension(projectPath);
-            var projectAbsolutePath = Path.GetFullPath(Path.Combine(solutionDirectory, projectPath));
-
-            if (!File.Exists(projectAbsolutePath))
-            {
-                AnsiConsole.MarkupLine($"[yellow]Project '{projectName}' not found at '{projectAbsolutePath}'[/]");
-                continue;
-            }
-
-            var projectPackageReferences = GetProjectPackageReferences(projectAbsolutePath);
-            var projectProjectReferences = GetProjectProjectReferences(projectName, projectAbsolutePath);
-
-            solutionProjects.Add(new(projectName, projectPath, projectAbsolutePath, projectProjectReferences, projectPackageReferences));
-        }
-
-        return new Solution(solutionName, solutionAbsolutePath, solutionProjects);
-    }
-
-    static IReadOnlyList<string> GetSolutionProjectPaths(string solutionPath)
-    {
-        string result = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" list");
-        var lines = result.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
-
-        return lines.Where(line => line.EndsWith(".csproj")).Select(line => line.Trim()).ToList();
-    }
-
-
-    static List<PackageReference> GetProjectPackageReferences(string projectPath)
-    {
-        var packageReferences = new List<PackageReference>();
-
-        try
-        {
-            var xdoc = XDocument.Load(projectPath);
-            var packageReferenceElements = xdoc.Descendants().Where(e => e.Name.LocalName == "PackageReference");
-
-            foreach (var element in packageReferenceElements)
-            {
-                var name = element.Attribute("Include")?.Value;
-                var requestedVersion = element.Attribute("Version")?.Value ?? "";
-
-                if (!string.IsNullOrEmpty(name))
-                {
-                    packageReferences.Add(new PackageReference(name, requestedVersion));
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error reading project file: {ex.Message}");
-        }
-
-        return packageReferences;
-    }
-
-    static List<ProjectReference> GetProjectProjectReferences(string projectName, string projectPath)
-    {
-        var projectReferences = new List<ProjectReference>();
-
-        var projectFolder = Path.GetDirectoryName(projectPath) ?? "";
-
-        try
-        {
-            var xdoc = XDocument.Load(projectPath);
-            var projectReferenceElements = xdoc.Descendants().Where(e => e.Name.LocalName == "ProjectReference");
-
-            foreach (var element in projectReferenceElements)
-            {
-                var specifiedPath = element.Attribute("Include")?.Value;
-                if (!string.IsNullOrEmpty(specifiedPath))
-                {
-                    var relativePath = specifiedPath.Trim();
-                    if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    {   // Convert backslashes to forward slashes for Linux or macOS
-                        relativePath = relativePath.Replace('\\', '/');
-                    }
-
-                    var absolutePath = Path.GetFullPath(Path.Combine(projectFolder, relativePath));
-                    var name = Path.GetFileNameWithoutExtension(absolutePath);
-                    if (!File.Exists(absolutePath))
-                    {
-                        AnsiConsole.MarkupLine($"[yellow]Project '{projectName}' reference to '{specifiedPath}' not found at '{absolutePath}'[/]");
-                        continue;
-                    }
-                    projectReferences.Add(new ProjectReference(name, specifiedPath, absolutePath));
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error reading project file: {ex.Message}");
-        }
-
-        return projectReferences;
-    }
-
-    static void SwitchProjectReferenceToProject(string absoluteProjectPath, PackageReference selectedPackage, Project selectedTargetProject)
+    static void SwitchProjectReferenceToProject(Project project, PackageReference selectedPackage, Project selectedTargetProject)
     {
         try
         {
+            var absoluteProjectPath = project.AbsolutePath;
+            var projectReferencePath = Utils.GetRelativePath(absoluteProjectPath, selectedTargetProject.AbsolutePath);
+
             var xdoc = XDocument.Load(absoluteProjectPath);
 
+            // Get the first PackageReference element with the selected package name
             var packageReferenceElement = xdoc.Descendants()
                 .Where(e => e.Name.LocalName == "PackageReference" &&
                     e.Attribute("Include")?.Value == selectedPackage.Name)
                 .First();
-
-            var projectReferencePath = Utils.GetRelativePath(absoluteProjectPath, selectedTargetProject.AbsolutePath);
-
             var originalPackageReferenceText = packageReferenceElement.ToString();
+
+            // Inactivate the package reference using a condition to disable it
             packageReferenceElement.SetAttributeValue("Condition", $"'$(PSWITCH)' == '{projectReferencePath}'");
             var disabledPackageReferenceText = packageReferenceElement.ToString();
 
+            // Create a new ProjectReference element with a condition that allows it to be active, but shows which package reference it replaces
             var projectReferenceElement = new XElement("ProjectReference");
             projectReferenceElement.SetAttributeValue("Include", projectReferencePath);
             projectReferenceElement.SetAttributeValue("Condition", $"'$(PSWITCH)' != '{selectedPackage.Name}'");
             var targetProjectReferenceText = projectReferenceElement.ToString();
 
+            // Replace the original package reference with the disabled package reference and the target project reference
             var originalFileText = File.ReadAllText(absoluteProjectPath);
             var updatedFileText = originalFileText.Replace(originalPackageReferenceText, disabledPackageReferenceText + targetProjectReferenceText);
             File.WriteAllText(absoluteProjectPath, updatedFileText);
@@ -271,6 +166,123 @@ class Program
         }
     }
 }
+
+record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Projects)
+{
+    public static Solution Parse(string absolutePath)
+    {
+        var name = Path.GetFileNameWithoutExtension(absolutePath);
+        var solutionDirectory = Path.GetDirectoryName(absolutePath) ?? "";
+
+        var projectPaths = GetProjectPaths(absolutePath);
+
+        List<Project> solutionProjects = [];
+        foreach (var specifiedProjectPath in projectPaths)
+        {
+            var projectAbsolutePath = Path.GetFullPath(Path.Combine(solutionDirectory, specifiedProjectPath));
+            if (!File.Exists(projectAbsolutePath))
+            {
+                AnsiConsole.MarkupLine($"[yellow]Project '{specifiedProjectPath}' not found at '{projectAbsolutePath}'[/]");
+                continue;
+            }
+
+            var project = Project.Parse(projectAbsolutePath, specifiedProjectPath);
+            solutionProjects.Add(project);
+        }
+
+        return new Solution(name, absolutePath, solutionProjects);
+    }
+
+    static IReadOnlyList<string> GetProjectPaths(string solutionPath)
+    {
+        string result = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" list");
+        var lines = result.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
+
+        return lines.Where(line => line.EndsWith(".csproj")).Select(line => line.Trim()).ToList();
+    }
+}
+
+
+record Project(
+    string Name,
+    string SpecifiedPath,
+    string AbsolutePath,
+    IReadOnlyList<ProjectReference> ProjectReferences,
+    IReadOnlyList<PackageReference> PackageReferences)
+
+{
+    public static Project Parse(string absolutePath, string specifiedPath)
+    {
+        var name = Path.GetFileNameWithoutExtension(absolutePath);
+
+        var packageReferences = GetPackageReferences(absolutePath);
+        var projectReferences = GetProjectReferences(name, absolutePath);
+
+        return new(name, specifiedPath, absolutePath, projectReferences, packageReferences);
+    }
+
+    static List<PackageReference> GetPackageReferences(string path)
+    {
+        var packageReferences = new List<PackageReference>();
+
+        var xdoc = XDocument.Load(path);
+        var packageReferenceElements = xdoc.Descendants()
+            .Where(e => e.Name.LocalName == "PackageReference");
+
+        foreach (var element in packageReferenceElements)
+        {
+            var name = element.Attribute("Include")?.Value;
+            var version = element.Attribute("Version")?.Value ?? "";
+
+            if (string.IsNullOrEmpty(name)) continue;
+            packageReferences.Add(new PackageReference(name, version));
+        }
+
+        return packageReferences;
+    }
+
+
+    static List<ProjectReference> GetProjectReferences(string projectPath)
+    {
+        var projectReferences = new List<ProjectReference>();
+
+        var projectFolder = Path.GetDirectoryName(projectPath) ?? "";
+
+
+        var xdoc = XDocument.Load(projectPath);
+        var projectReferenceElements = xdoc.Descendants().Where(e => e.Name.LocalName == "ProjectReference");
+
+        foreach (var element in projectReferenceElements)
+        {
+            var specifiedPath = element.Attribute("Include")?.Value;
+            if (!string.IsNullOrEmpty(specifiedPath))
+            {
+                var relativePath = specifiedPath.Trim();
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {   // Convert backslashes to forward slashes for Linux or macOS
+                    relativePath = relativePath.Replace('\\', '/');
+                }
+
+                var absolutePath = Path.GetFullPath(Path.Combine(projectFolder, relativePath));
+                var name = Path.GetFileNameWithoutExtension(absolutePath);
+                if (!File.Exists(absolutePath))
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Project '{projectPath}' reference to '{specifiedPath}' not found at '{absolutePath}'[/]");
+                    continue;
+                }
+                projectReferences.Add(new ProjectReference(name, specifiedPath, absolutePath));
+            }
+        }
+
+
+        return projectReferences;
+    }
+
+}
+
+record PackageReference(string Name, string Version);
+record ProjectReference(string Name, string SpecifiedPath, string AbsolutePath);
+
 
 
 class Utils
