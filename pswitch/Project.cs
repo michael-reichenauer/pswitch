@@ -4,6 +4,8 @@ using Spectre.Console;
 
 namespace pswitch;
 
+record Package(string Name, string Version, string Condition);
+
 record Project(
     string Name,
     string SpecifiedPath,
@@ -22,6 +24,64 @@ record Project(
 
         return new(name, specifiedPath, projectFilePath, projectReferences, packageReferences, condition);
     }
+
+    public IReadOnlyList<Project> GetReferencedProjectIncludeTransitive()
+    {
+        var uniqueProjects = new HashSet<string>();
+        var allProjects = new List<Project>();
+
+        void AddProjectAndTransitives(Project project)
+        {
+            if (uniqueProjects.Add(project.AbsolutePath))
+            {
+                allProjects.Add(project);
+                foreach (var reference in project.ProjectReferences)
+                {
+                    AddProjectAndTransitives(reference);
+                }
+            }
+        }
+
+        foreach (var project in ProjectReferences)
+        {
+            AddProjectAndTransitives(project);
+        }
+
+        return allProjects;
+    }
+
+    public void SwitchPackageToProjectReference(string packageName, Project targetProject)
+    {
+        var absoluteProjectPath = AbsolutePath;
+        var projectReferencePath = Utils.GetRelativePath(absoluteProjectPath, targetProject.AbsolutePath);
+
+        var xdoc = XDocument.Load(absoluteProjectPath);
+
+        // Get the first PackageReference element with the selected package name
+        var packageReferenceElement = xdoc.Descendants()
+            .Where(e => e.Name.LocalName == "PackageReference" &&
+                e.Attribute("Include")?.Value == packageName)
+            .First();
+        var originalPackageReferenceText = packageReferenceElement.ToString();
+
+        // Inactivate the package reference using a condition to disable it
+        packageReferenceElement.SetAttributeValue("Condition", $"'$(PSWITCH)' == '{projectReferencePath}'");
+        var disabledPackageReferenceText = packageReferenceElement.ToString();
+
+        // Create a new ProjectReference element with a condition that allows it to be active, but shows which package reference it replaces
+        var projectReferenceElement = new XElement("ProjectReference");
+        projectReferenceElement.SetAttributeValue("Include", projectReferencePath);
+        projectReferenceElement.SetAttributeValue("Condition", $"'$(PSWITCH)' != '{packageName}'");
+        var targetProjectReferenceText = projectReferenceElement.ToString();
+
+        // Replace the original package reference with the disabled package reference and the target project reference
+        var originalFileText = File.ReadAllText(absoluteProjectPath);
+        var updatedFileText = originalFileText.Replace(originalPackageReferenceText, disabledPackageReferenceText + targetProjectReferenceText);
+        File.WriteAllText(absoluteProjectPath, updatedFileText);
+
+        AnsiConsole.MarkupLine($"  Switched [blue]{Name}[/] package [purple]{packageName}[/] reference => [aqua]{targetProject.Name}[/] [grey]{targetProject.AbsolutePath}[/] ");
+    }
+
 
     static List<Package> GetPackageReferences(string projectFilePath)
     {
@@ -74,7 +134,6 @@ record Project(
             }
 
             projectReferences.Add(Parse(absolutePath, specifiedPath, condition));
-
         }
 
         return projectReferences;

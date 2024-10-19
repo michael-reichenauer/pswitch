@@ -28,6 +28,26 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
         return new Solution(name, absolutePath, solutionProjects);
     }
 
+
+    public void AddProjectsToSolution(Project project, string solutionFolderName)
+    {
+        AnsiConsole.MarkupLine($"Adding projects to [green]{Name}[/]/[teal]{solutionFolderName}[/]:");
+
+        // Add the main project to the solution
+        AddProject(project.AbsolutePath, solutionFolderName);
+        foreach (var projectReference in project.GetReferencedProjectIncludeTransitive())
+        {
+            AddProject(projectReference.AbsolutePath, solutionFolderName);
+        }
+    }
+
+    void AddProject(string projectFilePath, string solutionFolderName)
+    {
+        var projectName = Path.GetFileNameWithoutExtension(projectFilePath);
+        Cmd.Execute("dotnet", $"sln \"{AbsolutePath}\" add --solution-folder \"{solutionFolderName}\" \"{projectFilePath}\" ");
+        AnsiConsole.MarkupLine($"   Added: [aqua]{projectName}[/] [grey]({projectFilePath})[/]");
+    }
+
     static IReadOnlyList<string> GetProjectPaths(string solutionPath)
     {
         string result = Cmd.Execute("dotnet", $"sln \"{solutionPath}\" list");
