@@ -17,11 +17,13 @@ class Program
             // Prompt user to select a package from the solution to switch to a target solution project
             var workSolutionPath = GetWorkSolutionPath(args);
             var workSolution = Solution.Parse(workSolutionPath);
+
             var (selectedPackageName, selectedPackageVersions) = PromptPackage(workSolution);
 
             // Prompt user to select a target project from the target solution to be referenced instead of the selected package
             var targetSolutionPath = GetTargetSolutionPath(args);
             var targetSolution = Solution.Parse(targetSolutionPath);
+
             Project selectedTargetProject = PromptTargetProject(targetSolution);
 
             ShowSummeryOfChanges(workSolution, selectedPackageName, selectedTargetProject);
@@ -42,7 +44,6 @@ class Program
         }
     }
 
-
     static string GetWorkSolutionPath(string[] args)
     {
         string path = args.Length >= 1 ? Path.GetFullPath(args[0]) : DefaultWorkSolutionPath;
@@ -59,24 +60,35 @@ class Program
 
     static (string, string) PromptPackage(Solution workSolution)
     {
+        if (!Utils.IsConsoleInteractive()) return ("Scrutor", "4.4.2");
+
         var packages = workSolution.Projects.SelectMany(p => p.PackageReferences).ToList();
-        if (!Utils.IsConsoleInteractive())
-        {
-            var scrutorPackages = packages.Where(p => p.Name == "Scrutor");
-            var versions = string.Join(". ", scrutorPackages.Select(p => p.Version).Distinct());
-            return ("Scrutor", versions);
-        }
+
+        var switchablePackages = packages.DistinctBy(p => p.Name).Where(p => !p.IsSwitched).ToList();
+        var switchedPackages = packages.DistinctBy(p => p.Name).Where(p => p.IsSwitched).ToList();
+
+        var selectablePackages = switchedPackages.Any()
+            ? switchedPackages.Prepend(null!).Concat(switchablePackages)
+            : switchablePackages;
 
         // Prompt user to select a package from the solution to switch to a target solution project 
         var selectedPackage = Utils.Prompt(
-            $"\nSelect a package to switch in solution [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:",
-            packages.DistinctBy(p => p.Name),
+            $"\nSelect a package to switch or restore in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:",
+           selectablePackages,
             p =>
             {
+                if (p == null) return "";
                 var multipleVersions = packages.Where(pp => pp.Name == p.Name);
                 var versions = string.Join(". ", multipleVersions.Select(p => p.Version).Distinct());
-                return $"{p.Name}   [grey]({versions})[/]";
+
+                var switchedReference = multipleVersions.FirstOrDefault(pp => pp.IsSwitched)?.SwitchReference;
+
+                return switchedReference != null ?
+                    $"[olive]Switched[/]: [purple]{p.Name}[/] [grey]({versions})[/] => [aqua]{switchedReference}[/]" :
+                    $"{p.Name} [grey]({versions})[/]";
             });
+        if (selectedPackage == null) throw new TaskCanceledException("Cancelled");
+
         var multipleVersions = packages.Where(p => p.Name == selectedPackage.Name);
         var selectedVersions = string.Join(". ", multipleVersions.Select(p => p.Version).Distinct());
 

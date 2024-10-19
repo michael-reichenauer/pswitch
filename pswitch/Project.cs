@@ -1,10 +1,11 @@
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Spectre.Console;
 
 namespace pswitch;
 
-record Package(string Name, string Version, string Condition);
+record Package(string Name, string Version, bool IsSwitched, string SwitchReference);
 
 record Project(
     string Name,
@@ -12,17 +13,16 @@ record Project(
     string AbsolutePath,
     IReadOnlyList<Project> ProjectReferences,
     IReadOnlyList<Package> PackageReferences,
-    string Condition)
-
+    bool IsSwitched = false, string SwitchReference = "")
 {
-    public static Project Parse(string projectFilePath, string specifiedPath, string condition)
+    public static Project Parse(string projectFilePath, string specifiedPath, bool IsSwitched = false, string SwitchReference = "")
     {
         var name = Path.GetFileNameWithoutExtension(projectFilePath);
 
         var packageReferences = GetPackageReferences(projectFilePath);
         var projectReferences = GetProjectReferences(projectFilePath);
 
-        return new(name, specifiedPath, projectFilePath, projectReferences, packageReferences, condition);
+        return new(name, specifiedPath, projectFilePath, projectReferences, packageReferences, IsSwitched, SwitchReference);
     }
 
     public IReadOnlyList<Project> GetReferencedProjectIncludeTransitive()
@@ -55,10 +55,10 @@ record Project(
         var absoluteProjectPath = AbsolutePath;
         var projectReferencePath = Utils.GetRelativePath(absoluteProjectPath, targetProject.AbsolutePath);
 
-        var xdoc = XDocument.Load(absoluteProjectPath);
+        var xml = XDocument.Load(absoluteProjectPath);
 
         // Get the first PackageReference element with the selected package name
-        var packageReferenceElement = xdoc.Descendants()
+        var packageReferenceElement = xml.Descendants()
             .Where(e => e.Name.LocalName == "PackageReference" &&
                 e.Attribute("Include")?.Value == packageName)
             .First();
@@ -85,8 +85,8 @@ record Project(
 
     static List<Package> GetPackageReferences(string projectFilePath)
     {
-        var xdoc = XDocument.Load(projectFilePath);
-        var packageReferenceElements = xdoc.Descendants()
+        var xml = XDocument.Load(projectFilePath);
+        var packageReferenceElements = xml.Descendants()
             .Where(e => e.Name.LocalName == "PackageReference");
 
         var packageReferences = new List<Package>();
@@ -95,9 +95,10 @@ record Project(
             var name = element.Attribute("Include")?.Value;
             var version = element.Attribute("Version")?.Value ?? "";
             var condition = element.Attribute("Condition")?.Value ?? "";
+            var (isSwitched, reference) = ParseCondition(condition);
 
             if (string.IsNullOrEmpty(name)) continue;  // Skip "Update" package references for now!!
-            packageReferences.Add(new Package(name, version, condition));
+            packageReferences.Add(new Package(name, version, isSwitched, reference));
         }
 
         return packageReferences;
@@ -108,14 +109,15 @@ record Project(
     {
         var projectFolder = Path.GetDirectoryName(projectFilePath) ?? "";
 
-        var xdoc = XDocument.Load(projectFilePath);
-        var projectReferenceElements = xdoc.Descendants().Where(e => e.Name.LocalName == "ProjectReference");
+        var xml = XDocument.Load(projectFilePath);
+        var projectReferenceElements = xml.Descendants().Where(e => e.Name.LocalName == "ProjectReference");
 
         var projectReferences = new List<Project>();
         foreach (var element in projectReferenceElements)
         {
             var specifiedPath = element.Attribute("Include")?.Value;
             var condition = element.Attribute("Condition")?.Value ?? "";
+            var (isSwitched, switchReference) = ParseCondition(condition);
 
             if (string.IsNullOrEmpty(specifiedPath)) throw new Exception($"Empty project reference named in project file '{projectFilePath}'");
 
@@ -133,9 +135,22 @@ record Project(
                 continue;
             }
 
-            projectReferences.Add(Parse(absolutePath, specifiedPath, condition));
+            projectReferences.Add(Parse(absolutePath, specifiedPath, isSwitched, switchReference));
         }
 
         return projectReferences;
+    }
+
+
+    static (bool isSwitched, string switchReference) ParseCondition(string condition)
+    {
+        var pattern = @"'\$\(PSWITCH\)'\s*(?<operator>==|!=)\s*'(?<rightSide>.+)'";
+        var match = Regex.Match(condition, pattern);
+
+        if (!match.Success) return (false, "");
+
+        var rightSide = match.Groups["rightSide"].Value;
+
+        return (true, rightSide);
     }
 }

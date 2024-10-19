@@ -21,7 +21,7 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
                 continue;
             }
 
-            var project = Project.Parse(projectAbsolutePath, specifiedProjectPath, "");
+            var project = Project.Parse(projectAbsolutePath, specifiedProjectPath);
             solutionProjects.Add(project);
         }
 
