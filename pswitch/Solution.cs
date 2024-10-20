@@ -28,11 +28,11 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
         return new Solution(name, absolutePath, solutionProjects);
     }
 
+    public IReadOnlyList<Package> GetReferencedPackages() =>
+        Projects.SelectMany(p => p.PackageReferences).ToList();
 
     public void AddProjectsToSolution(Project project, string solutionFolderName)
     {
-        AnsiConsole.MarkupLine($"Adding projects to [green]{Name}[/]/[teal]{solutionFolderName}[/]:");
-
         // Add the main project to the solution
         AddProject(project.AbsolutePath, solutionFolderName);
         foreach (var projectReference in project.GetReferencedProjectIncludeTransitive())
@@ -41,12 +41,39 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
         }
     }
 
+    internal void RemoveProjectsToSolution(string selectedPackageName)
+    {
+        var switchedProjectsReferences = Projects
+            .Concat(Projects.SelectMany(p => p.GetReferencedProjectIncludeTransitive()))
+            .Where(p => p.SwitchReference == selectedPackageName)
+            .DistinctBy(p => p.AbsolutePath)
+            .ToList();
+
+        var projectsToRemove = switchedProjectsReferences
+            .Where(p => null != switchedProjectsReferences.FirstOrDefault(pp => pp.AbsolutePath == p.AbsolutePath))
+            .ToList();
+
+        foreach (var project in projectsToRemove)
+        {
+            RemoveProject(project.AbsolutePath);
+        }
+    }
+
+
     void AddProject(string projectFilePath, string solutionFolderName)
     {
         var projectName = Path.GetFileNameWithoutExtension(projectFilePath);
         Cmd.Execute("dotnet", $"sln \"{AbsolutePath}\" add --solution-folder \"{solutionFolderName}\" \"{projectFilePath}\" ");
         AnsiConsole.MarkupLine($"   Added: [aqua]{projectName}[/] [grey]({projectFilePath})[/]");
     }
+
+    void RemoveProject(string projectFilePath)
+    {
+        var projectName = Path.GetFileNameWithoutExtension(projectFilePath);
+        Cmd.Execute("dotnet", $"sln \"{AbsolutePath}\" remove \"{projectFilePath}\" ");
+        AnsiConsole.MarkupLine($"  Removed: [aqua]{projectName}[/] [grey]({projectFilePath})[/]");
+    }
+
 
     static IReadOnlyList<string> GetProjectPaths(string solutionPath)
     {
@@ -55,4 +82,6 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
 
         return lines.Where(line => line.EndsWith(".csproj")).Select(line => line.Trim()).ToList();
     }
+
+
 }

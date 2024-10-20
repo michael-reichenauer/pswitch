@@ -52,10 +52,10 @@ record Project(
 
     public void SwitchPackageToProjectReference(string packageName, Project targetProject)
     {
-        var absoluteProjectPath = AbsolutePath;
-        var projectReferencePath = Utils.GetRelativePath(absoluteProjectPath, targetProject.AbsolutePath);
+        var projectReferencePath = Utils.GetRelativePath(AbsolutePath, targetProject.AbsolutePath);
 
-        var xml = XDocument.Load(absoluteProjectPath);
+        var originalFileText = File.ReadAllText(AbsolutePath);
+        var xml = XDocument.Load(AbsolutePath);
 
         // Get the first PackageReference element with the selected package name
         var packageReferenceElement = xml.Descendants()
@@ -75,11 +75,44 @@ record Project(
         var targetProjectReferenceText = projectReferenceElement.ToString();
 
         // Replace the original package reference with the disabled package reference and the target project reference
-        var originalFileText = File.ReadAllText(absoluteProjectPath);
         var updatedFileText = originalFileText.Replace(originalPackageReferenceText, disabledPackageReferenceText + targetProjectReferenceText);
-        File.WriteAllText(absoluteProjectPath, updatedFileText);
+        File.WriteAllText(AbsolutePath, updatedFileText);
 
         AnsiConsole.MarkupLine($"  Switched [blue]{Name}[/] package [purple]{packageName}[/] reference => [aqua]{targetProject.Name}[/] [grey]{targetProject.AbsolutePath}[/] ");
+    }
+
+
+    internal void RestorePackageFromProjectReference(string packageName)
+    {
+        var selectedPackage = PackageReferences.First(p => p.Name == packageName);
+        var targetProject = ProjectReferences.First(p => p.SwitchReference == packageName);
+
+        var originalFileText = File.ReadAllText(AbsolutePath);
+        var xml = XDocument.Load(AbsolutePath);
+
+        var packageReferenceElement = xml.Descendants()
+            .Where(e => e.Name.LocalName == "PackageReference" &&
+                e.Attribute("Include")?.Value == selectedPackage.Name)
+            .First();
+        var originalPackageReferenceText = packageReferenceElement.ToString();
+
+        var conditionsAttribute = packageReferenceElement.Attribute("Condition")
+            ?? throw new Exception("Condition attribute not found in package reference element");
+        conditionsAttribute.Remove();
+        var restoredPackageReferenceText = packageReferenceElement.ToString();
+
+        var projectReferenceElement = xml.Descendants()
+            .Where(e => e.Name.LocalName == "ProjectReference" &&
+                e.Attribute("Include")?.Value == selectedPackage.SwitchReference)
+            .First();
+        var originalProjectReferenceText = projectReferenceElement.ToString();
+
+        var updatedFileText = originalFileText.Replace(originalPackageReferenceText, restoredPackageReferenceText);
+        updatedFileText = updatedFileText.Replace(originalProjectReferenceText, "");
+
+        File.WriteAllText(AbsolutePath, updatedFileText);
+
+        AnsiConsole.MarkupLine($"  Restored [blue]{Name}[/] package [purple]{packageName}[/] reference [grey](removed => {targetProject.Name} {targetProject.AbsolutePath}[/])");
     }
 
 
@@ -153,4 +186,5 @@ record Project(
 
         return (true, rightSide);
     }
+
 }
