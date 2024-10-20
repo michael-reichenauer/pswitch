@@ -17,7 +17,7 @@ record Project(
 {
     public static Project Parse(string projectFilePath, string specifiedPath, bool IsSwitched = false, string SwitchReference = "")
     {
-        var name = Path.GetFileNameWithoutExtension(projectFilePath);
+        var name = Path.GetFileName(projectFilePath);
 
         var packageReferences = GetPackageReferences(projectFilePath);
         var projectReferences = GetProjectReferences(projectFilePath);
@@ -112,7 +112,7 @@ record Project(
 
         File.WriteAllText(AbsolutePath, updatedFileText);
 
-        AnsiConsole.MarkupLine($"  Restored [blue]{Name}[/] package [purple]{packageName}[/] reference [grey](removed => {targetProject.Name} {targetProject.AbsolutePath}[/])");
+        AnsiConsole.MarkupLine($"  Restored [blue]{Name}[/] package [purple]{packageName}[/] reference [grey](removed: => {targetProject.AbsolutePath}[/])");
     }
 
 

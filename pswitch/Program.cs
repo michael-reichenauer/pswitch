@@ -42,7 +42,28 @@ class Program
         }
     }
 
-    private static void RestorePackage(Solution workSolution, Package selectedPackage)
+
+    static void SwitchPackage(Solution workSolution, Package selectedPackage)
+    {
+        // Prompt user to select a target project from the target solution to be referenced instead of the selected package
+        var targetSolutionPath = GetTargetSolutionPath();
+        var targetSolution = Solution.Parse(targetSolutionPath);
+
+        Project selectedTargetProject = PromptTargetProject(targetSolution);
+
+        AnsiConsole.MarkupLine("\n[grey]-----------------------------------------------------------[/]");
+        AnsiConsole.MarkupLine($"Adding projects to [green]{workSolution.Name}[/]/[darkgreen]{SolutionVirtualFolder}[/]:");
+        workSolution.AddProjectsToSolution(selectedTargetProject, SolutionVirtualFolder);
+
+        AnsiConsole.MarkupLine("\nSwitching package references to project references:");
+        var projectsToSwitch = workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name));
+        foreach (var project in projectsToSwitch)
+        {
+            project.SwitchPackageToProjectReference(selectedPackage.Name, selectedTargetProject);
+        }
+    }
+
+    static void RestorePackage(Solution workSolution, Package selectedPackage)
     {
         var projectsToRestore = workSolution.Projects
             .Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name && r.IsSwitched))
@@ -53,42 +74,17 @@ class Program
             .DistinctBy(p => p.AbsolutePath)
             .ToList();
 
-        AnsiConsole.MarkupLine("\nRestoring Package references from project references:");
+        AnsiConsole.MarkupLine("\n[grey]-----------------------------------------------------------[/]");
+        AnsiConsole.MarkupLine("Restoring Package references from project references:");
         foreach (var project in projectsToRestore)
         {
             project.RestorePackageFromProjectReference(selectedPackage.Name);
         }
 
-        AnsiConsole.MarkupLine($"\nRemoving projects from [green]{workSolution.Name}[/]/[teal]{SolutionVirtualFolder}[/]:");
+        AnsiConsole.MarkupLine($"\nRemoving projects from [green]{workSolution.Name}[/]/[darkgreen]{SolutionVirtualFolder}[/]:");
         workSolution.RemoveProjectsToSolution(selectedPackage.Name);
     }
 
-    private static void SwitchPackage(Solution workSolution, Package selectedPackage)
-    {
-        // Prompt user to select a target project from the target solution to be referenced instead of the selected package
-        var targetSolutionPath = GetTargetSolutionPath();
-        var targetSolution = Solution.Parse(targetSolutionPath);
-
-        Project selectedTargetProject = PromptTargetProject(targetSolution);
-
-        ShowSummeryOfSwitchChanges(workSolution, selectedPackage.Name, selectedTargetProject);
-        PromptToConfirmChanges();
-
-        AddProjectsAndSwitchReferences(workSolution, selectedPackage.Name, selectedTargetProject);
-    }
-
-    static void AddProjectsAndSwitchReferences(Solution workSolution, string selectedPackageName, Project selectedTargetProject)
-    {
-        AnsiConsole.MarkupLine($"\nAdding projects to [green]{workSolution.Name}[/]/[teal]{SolutionVirtualFolder}[/]:");
-        workSolution.AddProjectsToSolution(selectedTargetProject, SolutionVirtualFolder);
-
-        AnsiConsole.MarkupLine("\nSwitching package references to project references:");
-        var projectsToSwitch = workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackageName));
-        foreach (var project in projectsToSwitch)
-        {
-            project.SwitchPackageToProjectReference(selectedPackageName, selectedTargetProject);
-        }
-    }
     static string GetWorkSolutionPath()
     {
         var args = Environment.GetCommandLineArgs();
@@ -138,7 +134,13 @@ class Program
         var multipleVersions = packages.Where(p => p.Name == selectedPackage.Name);
         var selectedVersions = string.Join(". ", multipleVersions.Select(p => p.Version).Distinct());
 
-        AnsiConsole.MarkupLine($"\nSelected package: [purple]{selectedPackage.Name}[/] [gray]({selectedVersions})[/]");
+        var switchedReference = workSolution.Projects
+            .SelectMany(p => p.ProjectReferences)
+            .FirstOrDefault(p => p.SwitchReference == selectedPackage.Name);
+        var referenceText = switchedReference != null ? $" => [aqua]{switchedReference.Name}[/]" : "";
+
+
+        AnsiConsole.MarkupLine($"\nSelected package: [purple]{selectedPackage.Name}[/] [gray]({selectedVersions})[/]{referenceText} in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]");
         return selectedPackage;
     }
 
@@ -158,37 +160,8 @@ class Program
                 return $"{p.Name}{referencesText}";
             });
         if (project == null) throw new TaskCanceledException("Cancelled");
-        AnsiConsole.MarkupLine($"\nSelected Project: [blue]{project.SpecifiedPath}[/] in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
+
+        AnsiConsole.MarkupLine($"\nSelected Project: [blue]{project.Name}[/] in [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
         return project;
-    }
-
-    private static void ShowSummeryOfSwitchChanges(Solution workSolution, string selectedPackageName, Project selectedTargetProject)
-    {
-        AnsiConsole.MarkupLine($"\n\n[grey]--------------------------------------------------------------[/]");
-        AnsiConsole.MarkupLine("Summary of changes to be performed:\n");
-        AnsiConsole.MarkupLine($"Adding external projects to [green]{workSolution.Name}[/]/[teal]{SolutionVirtualFolder}[/] solution folder:");
-        AnsiConsole.MarkupLine($"  [aqua]{selectedTargetProject.Name}[/] [grey]({selectedTargetProject.AbsolutePath})[/]");
-        foreach (var project in selectedTargetProject.GetReferencedProjectIncludeTransitive())
-        {
-            AnsiConsole.MarkupLine($"  [aqua]{project.Name}[/] [grey]({project.AbsolutePath})[/]");
-        }
-
-        AnsiConsole.MarkupLine($"\nSwitching package to project reference in projects:");
-        foreach (var project in workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackageName)))
-        {
-            AnsiConsole.MarkupLine($"  [blue]{project.Name}[/]: [purple]{selectedPackageName}[/] [grey]({project.PackageReferences.First(r => r.Name == selectedPackageName).Version})[/] => [aqua]{selectedTargetProject.Name}[/] [grey]({selectedTargetProject.AbsolutePath})[/]");
-        }
-    }
-
-    private static void PromptToConfirmChanges()
-    {
-        if (!Utils.IsConsoleInteractive()) return;
-
-        AnsiConsole.MarkupLine("");
-
-        if (!AnsiConsole.Confirm("Do you want to continue?", false))
-        {
-            throw new TaskCanceledException("Cancelled");
-        }
     }
 }
