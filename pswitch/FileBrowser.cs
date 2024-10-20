@@ -8,6 +8,7 @@ public class FileBrowser
 {
     static readonly string MoreChoicesText = "Use arrows Up and Down to select, Enter to step into folder or select file";
     public int PageSize { get; set; } = 15;
+    public Func<string, bool>? FileFilter { get; set; } = null!;
 
     public string SelectFileText { get; set; } = "Select file";
 
@@ -102,13 +103,14 @@ public class FileBrowser
         return items;
     }
 
-    static IReadOnlyList<Item> GetFileItems(string currentFolder)
+    IReadOnlyList<Item> GetFileItems(string currentFolder)
     {
         var items = new List<Item>();
         foreach (var file in Directory.GetFiles(currentFolder))
         {
+            if (!(FileFilter?.Invoke(file) ?? true)) continue;
             string filename = Path.GetFileName(file);
-            items.Add(new("- " + filename, file));
+            items.Add(new("  " + filename, file));
         }
 
         return items;

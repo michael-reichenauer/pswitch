@@ -97,7 +97,7 @@ class Program
     static string GetWorkSolutionPath()
     {
         if (!Utils.IsConsoleInteractive()) return DefaultWorkSolutionPath;
-        var fileBrowser = new FileBrowser() { SelectFileText = "Select a solution file" };
+        var fileBrowser = new FileBrowser() { SelectFileText = "Select a solution file", FileFilter = f => Path.GetExtension(f)?.ToLower() == ".sln" };
 
         var parentFolder = FileStore.Get<State>(StateFilePath)?.WorkParentPath;
         var path = fileBrowser.GetFilePath(parentFolder);
@@ -113,7 +113,7 @@ class Program
     static string GetTargetSolutionPath()
     {
         if (!Utils.IsConsoleInteractive()) return DefaultTargetSolutionPath;
-        var fileBrowser = new FileBrowser() { SelectFileText = "Select a target solution file" };
+        var fileBrowser = new FileBrowser() { SelectFileText = "Select a target solution file", FileFilter = f => Path.GetExtension(f)?.ToLower() == ".sln" };
 
         var parentFolder = FileStore.Get<State>(StateFilePath)?.TargetParentPath;
         var path = fileBrowser.GetFilePath(parentFolder);
