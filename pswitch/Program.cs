@@ -1,14 +1,21 @@
 ﻿using Spectre.Console;
+using static System.Environment;
 
 namespace pswitch;
+
+class State
+{
+    public string WorkParentPath { get; set; } = "";
+    public string TargetParentPath { get; set; } = "";
+}
 
 
 class Program
 {
     static readonly string DefaultWorkSolutionPath = Path.GetFullPath(@"/workspaces/Dependinator/Dependinator.sln");
     static readonly string DefaultTargetSolutionPath = Path.GetFullPath(@"/workspaces/Scrutor/Scrutor.sln");
-
     static readonly string SolutionVirtualFolder = "ExternalProjects";
+    static readonly string StateFilePath = Path.Join(GetFolderPath(SpecialFolder.UserProfile), ".pswitch.json");
 
     static void Main()
     {
@@ -49,6 +56,7 @@ class Program
         var targetSolutionPath = GetTargetSolutionPath();
         var targetSolution = Solution.Parse(targetSolutionPath);
 
+        AnsiConsole.MarkupLine("");
         Project selectedTargetProject = PromptTargetProject(targetSolution);
 
         AnsiConsole.MarkupLine("\n[grey]-----------------------------------------------------------[/]");
@@ -89,14 +97,32 @@ class Program
     {
         if (!Utils.IsConsoleInteractive()) return DefaultWorkSolutionPath;
         var fileBrowser = new FileBrowser() { SelectFileText = "Select a solution file" };
-        return fileBrowser.GetFilePath();
+
+        var parentFolder = FileStore.Get<State>(StateFilePath)?.WorkParentPath;
+        var path = fileBrowser.GetFilePath(parentFolder);
+
+        parentFolder = Path.GetDirectoryName(Path.GetDirectoryName(path) ?? "");
+        if (parentFolder != null && Directory.Exists(parentFolder))
+        {
+            FileStore.Set<State>(StateFilePath, s => s.WorkParentPath = parentFolder);
+        }
+        return path;
     }
 
     static string GetTargetSolutionPath()
     {
         if (!Utils.IsConsoleInteractive()) return DefaultTargetSolutionPath;
         var fileBrowser = new FileBrowser() { SelectFileText = "Select a target solution file" };
-        return fileBrowser.GetFilePath();
+
+        var parentFolder = FileStore.Get<State>(StateFilePath)?.TargetParentPath;
+        var path = fileBrowser.GetFilePath(parentFolder);
+
+        parentFolder = Path.GetDirectoryName(Path.GetDirectoryName(path) ?? "");
+        if (parentFolder != null && Directory.Exists(parentFolder))
+        {
+            FileStore.Set<State>(StateFilePath, s => s.TargetParentPath = parentFolder);
+        }
+        return path;
     }
 
     static Package PromptPackage(Solution workSolution)
@@ -148,7 +174,7 @@ class Program
         if (!Utils.IsConsoleInteractive()) return targetSolution.Projects.First(p => p.SpecifiedPath == "src/Scrutor/Scrutor.csproj");
 
         var project = Utils.SelectionPrompt(
-            $"\nSelect a target project in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]:",
+            $"Select a target project in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]:",
             targetSolution.Projects.Prepend(null!),
             p =>
             {
@@ -159,7 +185,7 @@ class Program
             });
         if (project == null) throw new TaskCanceledException("Cancelled");
 
-        AnsiConsole.MarkupLine($"\nSelected Project: [blue]{project.Name}[/] in [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
+        AnsiConsole.MarkupLine($"Selected Project: [blue]{project.Name}[/] in [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]");
         return project;
     }
 }

@@ -17,7 +17,10 @@ public class FileBrowser
 
     public string GetFilePath(string? folder = null!)
     {
-        string currentFolder = folder ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string currentFolder = string.IsNullOrEmpty(folder) || !Directory.Exists(folder)
+             ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+             : folder;
+
         while (true)
         {
             var items = new List<Item>();
@@ -53,7 +56,7 @@ public class FileBrowser
 
     static IReadOnlyList<Item> GetDriveItems()
     {
-        if (!IsWindows) return [];
+        if (!IsWindows) return [new Item(":computer_disk: /", "/")];
 
         var items = new List<Item>();
         foreach (string drive in Directory.GetLogicalDrives())
