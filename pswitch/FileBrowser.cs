@@ -61,7 +61,7 @@ public class FileBrowser
         var items = new List<Item>();
         foreach (string drive in Directory.GetLogicalDrives())
         {
-            items.Add(new(":computer_disk: " + drive, drive));
+            items.Add(new("> " + drive, drive));
         }
 
         return items;
@@ -72,14 +72,14 @@ public class FileBrowser
         var parentFolderInfo = new DirectoryInfo(currentFolder).Parent;
         if (parentFolderInfo != null)
         {
-            return [new("[green]:file_folder: ..[/]", parentFolderInfo.FullName)];
+            return [new("[green]> ..[/]", parentFolderInfo.FullName)];
         }
 
         if (IsWindows && currentFolder != "")
         {
             if (Directory.GetLogicalDrives().Length > 1)
             {
-                return [new("[green]:file_folder: ..[/]", "")];
+                return [new("[green]> ..[/]", "")];
             }
         }
 
@@ -96,7 +96,7 @@ public class FileBrowser
             if (new DirectoryInfo(currentFolder).Parent != null) cut = 1;
             string folderName = dirInfo.Substring(currentFolder.Length + cut);
             string folderPath = dirInfo;
-            items.Add(new(":file_folder: " + folderName, folderPath));
+            items.Add(new("> " + folderName, folderPath));
         }
 
         return items;
@@ -108,7 +108,7 @@ public class FileBrowser
         foreach (var file in Directory.GetFiles(currentFolder))
         {
             string filename = Path.GetFileName(file);
-            items.Add(new(":page_facing_up: " + filename, file));
+            items.Add(new("- " + filename, file));
         }
 
         return items;

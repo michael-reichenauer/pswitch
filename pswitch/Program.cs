@@ -52,11 +52,12 @@ class Program
 
     static void SwitchPackage(Solution workSolution, Package selectedPackage)
     {
+        AnsiConsole.MarkupLine("");
+
         // Prompt user to select a target project from the target solution to be referenced instead of the selected package
         var targetSolutionPath = GetTargetSolutionPath();
         var targetSolution = Solution.Parse(targetSolutionPath);
 
-        AnsiConsole.MarkupLine("");
         Project selectedTargetProject = PromptTargetProject(targetSolution);
 
         AnsiConsole.MarkupLine("\n[grey]-----------------------------------------------------------[/]");
