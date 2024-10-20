@@ -78,11 +78,6 @@ class Program
             .Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name && r.IsSwitched))
             .ToList();
 
-        var externalProjects = projectsToRestore
-            .SelectMany(p => p.ProjectReferences.Where(r => r.SwitchReference == selectedPackage.Name))
-            .DistinctBy(p => p.AbsolutePath)
-            .ToList();
-
         AnsiConsole.MarkupLine("\n[grey]-----------------------------------------------------------[/]");
         AnsiConsole.MarkupLine("Restoring Package references from project references:");
         foreach (var project in projectsToRestore)

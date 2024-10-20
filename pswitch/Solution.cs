@@ -49,8 +49,12 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
             .DistinctBy(p => p.AbsolutePath)
             .ToList();
 
-        var projectsToRemove = switchedProjectsReferences
-            .Where(p => null != switchedProjectsReferences.FirstOrDefault(pp => pp.AbsolutePath == p.AbsolutePath))
+        var allProject = switchedProjectsReferences
+            .Concat(switchedProjectsReferences.SelectMany(p => p.GetReferencedProjectIncludeTransitive()))
+            .ToList();
+
+        var projectsToRemove = allProject
+            .Where(p => null != allProject.FirstOrDefault(pp => pp.AbsolutePath == p.AbsolutePath))
             .ToList();
 
         foreach (var project in projectsToRemove)
