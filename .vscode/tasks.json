@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/pswitch.csproj",
+                "${workspaceFolder}/pswitch/pswitch.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/pswitch.csproj",
+                "${workspaceFolder}/pswitch/pswitch.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +33,7 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/pswitch.csproj"
+                "${workspaceFolder}/pswitch/pswitch.csproj"
             ],
             "problemMatcher": "$msCompile"
         }
