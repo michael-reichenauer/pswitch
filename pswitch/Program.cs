@@ -87,18 +87,16 @@ class Program
 
     static string GetWorkSolutionPath()
     {
-        var args = Environment.GetCommandLineArgs();
-        string path = args.Length >= 2 ? Path.GetFullPath(args[1]) : DefaultWorkSolutionPath;
-        if (!File.Exists(path)) throw new FileNotFoundException($"Solution file not found '{path}'");
-        return path;
+        if (!Utils.IsConsoleInteractive()) return DefaultWorkSolutionPath;
+        var fileBrowser = new FileBrowser() { SelectFileText = "Select a solution file" };
+        return fileBrowser.GetFilePath();
     }
 
     static string GetTargetSolutionPath()
     {
-        var args = Environment.GetCommandLineArgs();
-        string path = args.Length >= 3 ? Path.GetFullPath(args[2]) : DefaultTargetSolutionPath;
-        if (!File.Exists(path)) throw new FileNotFoundException($"Solution file not found '{path}'");
-        return path;
+        if (!Utils.IsConsoleInteractive()) return DefaultTargetSolutionPath;
+        var fileBrowser = new FileBrowser() { SelectFileText = "Select a target solution file" };
+        return fileBrowser.GetFilePath();
     }
 
     static Package PromptPackage(Solution workSolution)
@@ -114,7 +112,7 @@ class Program
             : switchablePackages.Prepend(null!);
 
         // Prompt user to select a package from the solution to switch to a target solution project 
-        var selectedPackage = Utils.Prompt(
+        var selectedPackage = Utils.SelectionPrompt(
             $"\nSelect a package to switch or restore in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:",
            selectablePackages,
             p =>
@@ -149,7 +147,7 @@ class Program
     {
         if (!Utils.IsConsoleInteractive()) return targetSolution.Projects.First(p => p.SpecifiedPath == "src/Scrutor/Scrutor.csproj");
 
-        var project = Utils.Prompt(
+        var project = Utils.SelectionPrompt(
             $"\nSelect a target project in solution [green]{targetSolution.Name}[/] [grey]({targetSolution.AbsolutePath})[/]:",
             targetSolution.Projects.Prepend(null!),
             p =>
