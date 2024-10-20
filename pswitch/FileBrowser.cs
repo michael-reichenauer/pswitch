@@ -24,70 +24,90 @@ public class FileBrowser
 
             if (currentFolder == "")
             {
-                var drives = Directory.GetLogicalDrives();
-                foreach (string drive in drives)
-                {
-                    items.Add(new($":computer_disk: {drive}", drive));
-                }
+                items.AddRange(GetDriveItems());
             }
             else
             {
-                string[] directoriesInFolder;
-                try
-                {
-                    directoriesInFolder = Directory.GetDirectories(currentFolder);
-                }
-                catch
-                {
-                    // Current folder failed, lets try to get the user profile folder
-                    currentFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                    directoriesInFolder = Directory.GetDirectories(currentFolder);
-                }
-
-                // Add '..' folder to go to parent folder
-                var parentFolderInfo = new DirectoryInfo(currentFolder).Parent;
-                if (parentFolderInfo != null)
-                {
-                    items.Add(new("[green]:file_folder: ..[/]", parentFolderInfo.FullName));
-                }
-                else if (IsWindows && currentFolder != "")
-                {
-                    if (Directory.GetLogicalDrives().Count() > 1)
-                    {
-                        items.Add(new("[green]:file_folder: ..[/]", ""));
-                    }
-                }
-
-                foreach (var dirInfo in directoriesInFolder)
-                {
-                    int cut = 0;
-                    if (parentFolderInfo != null) cut = 1;
-                    string folderName = dirInfo.Substring(currentFolder.Length + cut);
-                    string folderPath = dirInfo;
-                    items.Add(new(":file_folder: " + folderName, folderPath));
-                }
-
-                var fileList = Directory.GetFiles(currentFolder);
-                foreach (string file in fileList)
-                {
-                    string filename = Path.GetFileName(file);
-                    items.Add(new(":page_facing_up: " + filename, file));
-                }
+                items.AddRange(
+                    GetParentItems(currentFolder)
+                    .Concat(GetDirectoryItems(currentFolder))
+                    .Concat(GetFileItems(currentFolder)));
             }
 
-            var selected = Utils.SelectionPrompt(
+            var selectedItem = Utils.SelectionPrompt(
                 $"{SelectFileText} in: \n[blue]{currentFolder}[/]",
                 items,
                 i => i.Name,
                 MoreChoicesText);
 
-            if (selected.Path == "" || Directory.Exists(selected.Path))
+            if (selectedItem.Path == "" || Directory.Exists(selectedItem.Path))
             {
-                currentFolder = selected.Path;
+                currentFolder = selectedItem.Path;
                 continue;
             }
 
-            return selected.Path;
+            return selectedItem.Path;
         }
+    }
+
+
+    static IReadOnlyList<Item> GetDriveItems()
+    {
+        if (!IsWindows) return [];
+
+        var items = new List<Item>();
+        foreach (string drive in Directory.GetLogicalDrives())
+        {
+            items.Add(new(":computer_disk: " + drive, drive));
+        }
+
+        return items;
+    }
+
+    static IReadOnlyList<Item> GetParentItems(string currentFolder)
+    {
+        var parentFolderInfo = new DirectoryInfo(currentFolder).Parent;
+        if (parentFolderInfo != null)
+        {
+            return [new("[green]:file_folder: ..[/]", parentFolderInfo.FullName)];
+        }
+
+        if (IsWindows && currentFolder != "")
+        {
+            if (Directory.GetLogicalDrives().Length > 1)
+            {
+                return [new("[green]:file_folder: ..[/]", "")];
+            }
+        }
+
+        return [];
+    }
+
+    static IReadOnlyList<Item> GetDirectoryItems(string currentFolder)
+    {
+        var items = new List<Item>();
+        foreach (var dirInfo in Directory.GetDirectories(currentFolder))
+        {
+            try { var _ = Directory.GetDirectories(currentFolder); } catch { continue; } // Skip if failed to read that directory 
+            int cut = 0;
+            if (new DirectoryInfo(currentFolder).Parent != null) cut = 1;
+            string folderName = dirInfo.Substring(currentFolder.Length + cut);
+            string folderPath = dirInfo;
+            items.Add(new(":file_folder: " + folderName, folderPath));
+        }
+
+        return items;
+    }
+
+    static IReadOnlyList<Item> GetFileItems(string currentFolder)
+    {
+        var items = new List<Item>();
+        foreach (var file in Directory.GetFiles(currentFolder))
+        {
+            string filename = Path.GetFileName(file);
+            items.Add(new(":page_facing_up: " + filename, file));
+        }
+
+        return items;
     }
 }
