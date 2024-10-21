@@ -21,6 +21,8 @@ class Program
     {
         try
         {
+            AnsiConsole.WriteLine();
+
             // Prompt user to select a package from the solution to switch to a target solution project
             var workSolutionPath = GetWorkSolutionPath();
             var workSolution = Solution.Parse(workSolutionPath);

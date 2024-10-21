@@ -24,19 +24,11 @@ public class FileBrowser
 
         while (true)
         {
-            var items = new List<Item>();
-
-            if (currentFolder == "")
-            {
-                items.AddRange(GetDriveItems());
-            }
-            else
-            {
-                items.AddRange(
-                    GetParentItems(currentFolder)
+            var items = currentFolder == ""
+                ? GetDriveItems()
+                : GetParentItems(currentFolder)
                     .Concat(GetDirectoryItems(currentFolder))
-                    .Concat(GetFileItems(currentFolder)));
-            }
+                    .Concat(GetFileItems(currentFolder));
 
             var selectedItem = Utils.SelectionPrompt(
                 $"{SelectFileText} in: \n[blue]{currentFolder}[/]",
