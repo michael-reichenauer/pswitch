@@ -48,12 +48,12 @@ public class FileBrowser
     static IReadOnlyList<Item> GetDriveItems(string currentFolder)
     {
         if (currentFolder != "") return [];
-        if (!IsWindows) return [new Item("[yellow]>[/] /", "/", true)];
+        if (!IsWindows) return [new Item("[yellow]()[/] /", "/", true)];
 
         var items = new List<Item>();
         foreach (string drive in Directory.GetLogicalDrives())
         {
-            items.Add(new("> " + drive, drive, true));
+            items.Add(new("() " + drive, drive, true));
         }
 
         return items;
@@ -65,14 +65,14 @@ public class FileBrowser
         var parentFolderInfo = new DirectoryInfo(currentFolder).Parent;
         if (parentFolderInfo != null)
         {
-            return [new("[yellow]>[/] [green]..[/]", parentFolderInfo.FullName, true)];
+            return [new("[yellow]()[/] ..", parentFolderInfo.FullName, true)];
         }
 
         if (IsWindows && currentFolder != "")
         {
             if (Directory.GetLogicalDrives().Length > 1)
             {
-                return [new("[yellow]>[/] [green]..[/]", "", true)];
+                return [new("[yellow]()[/] ..", "", true)];
             }
         }
 
@@ -91,7 +91,7 @@ public class FileBrowser
             if (new DirectoryInfo(currentFolder).Parent != null) cut = 1;
             string folderName = dirInfo.Substring(currentFolder.Length + cut);
             string folderPath = dirInfo;
-            items.Add(new("[yellow]>[/] " + folderName, folderPath, true));
+            items.Add(new("[yellow]()[/] " + folderName, folderPath, true));
         }
 
         return items;
@@ -106,7 +106,7 @@ public class FileBrowser
         {
             if (!(FileFilter?.Invoke(file) ?? true)) continue;
             string filename = Path.GetFileName(file);
-            items.Add(new("  " + filename, file, false));
+            items.Add(new("   " + filename, file, false));
         }
 
         return items;
