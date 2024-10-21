@@ -137,7 +137,7 @@ class Program
 
         // Prompt user to select a package from the solution to switch to a target solution project 
         var selectedPackage = Utils.SelectionPrompt(
-            $"\nSelect a package to switch or restore in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:",
+            $"Select a package to switch or restore in [green]{workSolution.Name}[/] [grey]({workSolution.AbsolutePath})[/]:",
            selectablePackages,
             p =>
             {
