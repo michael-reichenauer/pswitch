@@ -62,7 +62,7 @@ class Program
 
         AnsiConsole.MarkupLine("\n[grey]-----------------------------------------------------------[/]");
         AnsiConsole.MarkupLine($"Adding projects to [green]{workSolution.Name}[/]/[darkgreen]{SolutionVirtualFolder}[/]:");
-        workSolution.AddProjectsToSolution(selectedTargetProject, SolutionVirtualFolder);
+        workSolution.AddExternalProjectsToSolution(selectedTargetProject, SolutionVirtualFolder);
 
         AnsiConsole.MarkupLine("\nSwitching package references to project references:");
         var projectsToSwitch = workSolution.Projects.Where(p => p.PackageReferences.Any(r => r.Name == selectedPackage.Name));
@@ -82,11 +82,11 @@ class Program
         AnsiConsole.MarkupLine("Restoring Package references from project references:");
         foreach (var project in projectsToRestore)
         {
-            project.RestorePackageFromProjectReference(selectedPackage.Name);
+            project.RestorePackageToPackageReference(selectedPackage.Name);
         }
 
         AnsiConsole.MarkupLine($"\nRemoving projects from [green]{workSolution.Name}[/]/[darkgreen]{SolutionVirtualFolder}[/]:");
-        workSolution.RemoveProjectsToSolution(selectedPackage.Name);
+        workSolution.RemoveExternalProjectsFromSolution(selectedPackage.Name);
     }
 
     static string GetWorkSolutionPath()

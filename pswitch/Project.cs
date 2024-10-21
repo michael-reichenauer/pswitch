@@ -82,7 +82,7 @@ record Project(
     }
 
 
-    internal void RestorePackageFromProjectReference(string packageName)
+    internal void RestorePackageToPackageReference(string packageName)
     {
         var selectedPackage = PackageReferences.First(p => p.Name == packageName);
         var targetProject = ProjectReferences.First(p => p.SwitchReference == packageName);

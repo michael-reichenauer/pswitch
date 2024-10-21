@@ -57,7 +57,7 @@ public class FileBrowser
 
     static IReadOnlyList<Item> GetDriveItems()
     {
-        if (!IsWindows) return [new Item(":computer_disk: /", "/")];
+        if (!IsWindows) return [new Item("[yellow]>[/] /", "/")];
 
         var items = new List<Item>();
         foreach (string drive in Directory.GetLogicalDrives())
@@ -73,14 +73,14 @@ public class FileBrowser
         var parentFolderInfo = new DirectoryInfo(currentFolder).Parent;
         if (parentFolderInfo != null)
         {
-            return [new("[green]> ..[/]", parentFolderInfo.FullName)];
+            return [new("[yellow]>[/] [green]..[/]", parentFolderInfo.FullName)];
         }
 
         if (IsWindows && currentFolder != "")
         {
             if (Directory.GetLogicalDrives().Length > 1)
             {
-                return [new("[green]> ..[/]", "")];
+                return [new("[yellow]>[/] [green]..[/]", "")];
             }
         }
 
@@ -97,7 +97,7 @@ public class FileBrowser
             if (new DirectoryInfo(currentFolder).Parent != null) cut = 1;
             string folderName = dirInfo.Substring(currentFolder.Length + cut);
             string folderPath = dirInfo;
-            items.Add(new("> " + folderName, folderPath));
+            items.Add(new("[yellow]>[/] " + folderName, folderPath));
         }
 
         return items;

@@ -31,7 +31,7 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
     public IReadOnlyList<Package> GetReferencedPackages() =>
         Projects.SelectMany(p => p.PackageReferences).ToList();
 
-    public void AddProjectsToSolution(Project project, string solutionFolderName)
+    public void AddExternalProjectsToSolution(Project project, string solutionFolderName)
     {
         // Add the main project to the solution
         AddProject(project.AbsolutePath, solutionFolderName);
@@ -41,7 +41,7 @@ record Solution(string Name, string AbsolutePath, IReadOnlyList<Project> Project
         }
     }
 
-    internal void RemoveProjectsToSolution(string selectedPackageName)
+    internal void RemoveExternalProjectsFromSolution(string selectedPackageName)
     {
         var switchedProjectsReferences = Projects
             .Concat(Projects.SelectMany(p => p.GetReferencedProjectIncludeTransitive()))
