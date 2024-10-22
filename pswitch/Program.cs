@@ -49,6 +49,8 @@ class Program
             AnsiConsole.MarkupLine($"\n[red]Error[/]:");
             Console.WriteLine($"{ex}\n");
         }
+        AnsiConsole.MarkupLine("\nPress any key to exit");
+        Console.ReadKey(true);
     }
 
 
