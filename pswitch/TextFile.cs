@@ -23,7 +23,7 @@ public class TextFile(string filePath, Encoding encoding, string text)
 
     public void Write()
     {
-        using var writer = new StreamWriter(filePath, false);
+        using var writer = new StreamWriter(filePath, false, encoding);
         writer.Write(Text);
     }
 }
