@@ -54,7 +54,8 @@ record Project(
     {
         var projectReferencePath = Utils.GetRelativePath(AbsolutePath, targetProject.AbsolutePath);
 
-        var originalFileText = File.ReadAllText(AbsolutePath);
+        var textFile = TextFile.Read(AbsolutePath);
+        var originalFileText = textFile.Text;
         var xml = XDocument.Load(AbsolutePath);
 
         // Get the first PackageReference element with the selected package name
@@ -76,7 +77,7 @@ record Project(
 
         // Replace the original package reference with the disabled package reference and the target project reference
         var updatedFileText = originalFileText.Replace(originalPackageReferenceText, disabledPackageReferenceText + targetProjectReferenceText);
-        File.WriteAllText(AbsolutePath, updatedFileText);
+        textFile.Write(updatedFileText);
 
         AnsiConsole.MarkupLine($"  Switched [blue]{Name}[/] package [purple]{packageName}[/] reference => [aqua]{targetProject.Name}[/] [grey]{targetProject.AbsolutePath}[/] ");
     }
@@ -87,7 +88,8 @@ record Project(
         var selectedPackage = PackageReferences.First(p => p.Name == packageName);
         var targetProject = ProjectReferences.First(p => p.SwitchReference == packageName);
 
-        var originalFileText = File.ReadAllText(AbsolutePath);
+        var textFile = TextFile.Read(AbsolutePath);
+        var originalFileText = textFile.Text;
         var xml = XDocument.Load(AbsolutePath);
 
         var packageReferenceElement = xml.Descendants()
@@ -110,7 +112,7 @@ record Project(
         var updatedFileText = originalFileText.Replace(originalPackageReferenceText, restoredPackageReferenceText);
         updatedFileText = updatedFileText.Replace(originalProjectReferenceText, "");
 
-        File.WriteAllText(AbsolutePath, updatedFileText);
+        textFile.Write(updatedFileText);
 
         AnsiConsole.MarkupLine($"  Restored [blue]{Name}[/] package [purple]{packageName}[/] reference [grey](removed: => {targetProject.AbsolutePath}[/])");
     }
